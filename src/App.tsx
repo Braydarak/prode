@@ -16,6 +16,7 @@ import Loader from "./components/loader";
 import {
   getCurrentGoogleUser,
   onGoogleAuthStateChanged,
+  completeGoogleRedirectLogin,
   signOutFromGoogle,
 } from "./services/googleLogin";
 import {
@@ -74,6 +75,8 @@ function App() {
   const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
 
   useEffect(() => {
+    void completeGoogleRedirectLogin().catch(() => {});
+
     const unsubscribe = onGoogleAuthStateChanged((nextUser) => {
       setUser(nextUser);
       setIsAuthLoading(false);
