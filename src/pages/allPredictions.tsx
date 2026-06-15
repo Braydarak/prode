@@ -119,10 +119,10 @@ export default function AllPredictionsPage({
 
     const cards = predictions.map((prediction) => {
       const result = resultsByMatchId.get(prediction.matchId) ?? null;
+      const homeScore = result?.homeTeam.score;
+      const awayScore = result?.awayTeam.score;
       const hasRealResult =
-        result &&
-        typeof result.homeTeam.score === "number" &&
-        typeof result.awayTeam.score === "number";
+        typeof homeScore === "number" && typeof awayScore === "number";
 
       return {
         prediction,
@@ -130,8 +130,8 @@ export default function AllPredictionsPage({
         points: hasRealResult
           ? calculatePredictionPoints(prediction, {
               matchId: prediction.matchId,
-              homeGoals: result.homeTeam.score,
-              awayGoals: result.awayTeam.score,
+              homeGoals: homeScore,
+              awayGoals: awayScore,
             })
           : null,
       } satisfies PredictionCard;

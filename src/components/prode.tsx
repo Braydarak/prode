@@ -28,15 +28,12 @@ function getMatchStartDate(match: WorldCupGroupMatch): Date | null {
     (match.date
       ? `${match.date}T${match.time?.trim() ? match.time.trim() : "00:00:00"}Z`
       : null);
-  const hasTimezone =
-    Boolean(iso) &&
-    (iso.endsWith("Z") ||
-      /[+-]\d{2}:\d{2}$/.test(iso) ||
-      /[+-]\d{4}$/.test(iso));
-  const normalizedIso =
-    iso && /^\d{4}-\d{2}-\d{2}T/.test(iso) && !hasTimezone ? `${iso}Z` : iso;
+  if (!iso) return null;
 
-  if (!normalizedIso) return null;
+  const hasTimezone =
+    iso.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(iso) || /[+-]\d{4}$/.test(iso);
+  const normalizedIso =
+    /^\d{4}-\d{2}-\d{2}T/.test(iso) && !hasTimezone ? `${iso}Z` : iso;
 
   const ms = Date.parse(normalizedIso);
   if (!Number.isFinite(ms)) return null;
