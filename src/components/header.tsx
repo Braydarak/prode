@@ -4,6 +4,7 @@ import { useState } from "react";
 
 type HeaderProps = {
   onLogout: () => void;
+  onNavigate: (href: string) => void;
   currentPath?: string;
 };
 
@@ -14,27 +15,37 @@ const navItems = [
   { label: "Mundial", href: "/mundial", match: "/mundial" },
 ] as const;
 
-export default function Header({ onLogout, currentPath = "/" }: HeaderProps) {
+export default function Header({
+  onLogout,
+  onNavigate,
+  currentPath = "/",
+}: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 w-full">
       <div className="w-full overflow-hidden border-b border-emerald-200/70 bg-white/85 shadow-[0_20px_60px_rgba(16,24,40,0.08)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-          <a href="/" className="inline-flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate("/")}
+            className="inline-flex items-center gap-3"
+            aria-label="Ir al inicio"
+          >
             <img
               src={wc26Logo}
               alt="World Cup 2026"
               className="h-12 w-12 object-contain"
             />
-          </a>
+          </button>
 
           <div className="flex items-center gap-2">
             <nav className="hidden min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:flex lg:justify-end">
               {navItems.map((item) => (
-                <a
+                <button
                   key={item.label}
-                  href={item.href}
+                  type="button"
+                  onClick={() => onNavigate(item.href)}
                   className={`group relative whitespace-nowrap px-3 py-2 text-sm font-medium transition ${
                     currentPath === item.match
                       ? "text-zinc-950"
@@ -49,7 +60,7 @@ export default function Header({ onLogout, currentPath = "/" }: HeaderProps) {
                         : "w-0 group-hover:w-[calc(100%-1.5rem)]"
                     }`}
                   />
-                </a>
+                </button>
               ))}
             </nav>
 
@@ -84,10 +95,13 @@ export default function Header({ onLogout, currentPath = "/" }: HeaderProps) {
         >
           <nav className="flex flex-col gap-1 px-5 py-4">
             {navItems.map((item) => (
-              <a
+              <button
                 key={item.label}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
+                type="button"
+                onClick={() => {
+                  onNavigate(item.href);
+                  setMobileMenuOpen(false);
+                }}
                 className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
                   currentPath === item.match
                     ? "bg-zinc-950 text-white"
@@ -95,7 +109,7 @@ export default function Header({ onLogout, currentPath = "/" }: HeaderProps) {
                 }`}
               >
                 {item.label}
-              </a>
+              </button>
             ))}
           </nav>
         </div>

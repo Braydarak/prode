@@ -6,6 +6,7 @@ import {
   type WorldCupResultsByGroup,
 } from "./services/results";
 import AllPredictionsPage from "./pages/allPredictions";
+import InstallAppPage from "./pages/installApp";
 import LoginPage from "./pages/login";
 import MundialPage from "./pages/mundial";
 import UsersTablePage from "./pages/usersTablePage";
@@ -35,6 +36,8 @@ const OFFICIAL_START_MATCH = {
   awayTeam: "Argelia",
 };
 
+type InstallPlatform = "ios" | "android" | "other";
+
 function normalizeName(value: string | null | undefined): string {
   return (value ?? "")
     .normalize("NFD")
@@ -58,13 +61,50 @@ function getMatchStartMs(match: {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getInstallPlatform(): InstallPlatform {
+  if (typeof navigator === "undefined") return "other";
+
+  const ua = navigator.userAgent ?? "";
+  const isIPhoneIPadIPod = /iPad|iPhone|iPod/.test(ua);
+  const isIPadOs13Plus =
+    !isIPhoneIPadIPod &&
+    /Macintosh/.test(ua) &&
+    typeof navigator.maxTouchPoints === "number" &&
+    navigator.maxTouchPoints > 1;
+
+  if (isIPhoneIPadIPod || isIPadOs13Plus) {
+    return "ios";
+  }
+
+  if (/Android/i.test(ua)) {
+    return "android";
+  }
+
+  return "other";
+}
+
+function isRunningStandalone(): boolean {
+  if (typeof window === "undefined") return true;
+
+  const standaloneNavigator = window.navigator as Navigator & {
+    standalone?: boolean;
+  };
+
+  return Boolean(
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+      standaloneNavigator.standalone ||
+      document.referrer.startsWith("android-app://"),
+  );
+}
+
 function App() {
-  const currentPath = window.location.pathname;
-  const isMundialPage = currentPath === "/mundial";
-  const isAllPredictionsPage = currentPath === "/predicciones";
-  const isUsersTablePage = currentPath === "/posiciones";
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [user, setUser] = useState<User | null>(() => getCurrentGoogleUser());
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [installPlatform, setInstallPlatform] =
+    useState<InstallPlatform>("other");
+  const [isInstallCheckComplete, setIsInstallCheckComplete] = useState(false);
+  const [shouldShowInstallPage, setShouldShowInstallPage] = useState(false);
   const [resultsByGroup, setResultsByGroup] = useState<
     WorldCupResultsByGroup[]
   >([]);
@@ -73,6 +113,55 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
   const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
+  const isMundialPage = currentPath === "/mundial";
+  const isAllPredictionsPage = currentPath === "/predicciones";
+  const isUsersTablePage = currentPath === "/posiciones";
+
+  useEffect(() => {
+    function refreshInstallStatus() {
+      const platform = getInstallPlatform();
+      const isStandalone = isRunningStandalone();
+
+      setInstallPlatform(platform);
+      setShouldShowInstallPage(
+        !isStandalone && (platform === "ios" || platform === "android"),
+      );
+      setIsInstallCheckComplete(true);
+    }
+
+    const standaloneMediaQuery = window.matchMedia?.("(display-mode: standalone)");
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refreshInstallStatus();
+      }
+    }
+
+    refreshInstallStatus();
+    window.addEventListener("appinstalled", refreshInstallStatus);
+    window.addEventListener("pageshow", refreshInstallStatus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    standaloneMediaQuery?.addEventListener("change", refreshInstallStatus);
+
+    return () => {
+      window.removeEventListener("appinstalled", refreshInstallStatus);
+      window.removeEventListener("pageshow", refreshInstallStatus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      standaloneMediaQuery?.removeEventListener("change", refreshInstallStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    function handlePopState() {
+      setCurrentPath(window.location.pathname);
+    }
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -267,6 +356,30 @@ function App() {
     return unsubscribe;
   }, [officialStartMs, user, resultsByGroup]);
 
+  if (!isInstallCheckComplete) {
+    return null;
+  }
+
+  if (
+    shouldShowInstallPage &&
+    (installPlatform === "ios" || installPlatform === "android")
+  ) {
+    return (
+      <InstallAppPage
+        platform={installPlatform}
+        onRefreshInstallStatus={() => {
+          const platform = getInstallPlatform();
+          setInstallPlatform(platform);
+          setShouldShowInstallPage(
+            !isRunningStandalone() &&
+              (platform === "ios" || platform === "android"),
+          );
+          setIsInstallCheckComplete(true);
+        }}
+      />
+    );
+  }
+
   if (isAuthLoading || !user) {
     return <LoginPage />;
   }
@@ -284,6 +397,29 @@ function App() {
     }
   }
 
+  function handleNavigate(href: string) {
+    const nextUrl = new URL(href, window.location.origin);
+    const nextLocation = `${nextUrl.pathname}${nextUrl.hash}`;
+    const currentLocation = `${window.location.pathname}${window.location.hash}`;
+
+    if (nextLocation !== currentLocation) {
+      window.history.pushState({}, "", nextLocation);
+    }
+
+    setCurrentPath(nextUrl.pathname);
+
+    if (nextUrl.hash) {
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(nextUrl.hash.slice(1))
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <main
       id="top"
@@ -291,6 +427,7 @@ function App() {
     >
       <Header
         onLogout={() => void handleLogout()}
+        onNavigate={handleNavigate}
         currentPath={
           isMundialPage
             ? "/mundial"
