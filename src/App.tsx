@@ -74,59 +74,58 @@ function formatLiveMatchTime(
   const normalizedStatus = normalizeMatchStatus(match.status);
   const liveMinuteMatch = normalizedStatus.match(/^(\d{1,3}(?:\+\d{1,2})?)'?$/);
   if (liveMinuteMatch) {
-    const minuteValue = liveMinuteMatch[1];
-    const minuteNumber = Number.parseInt(minuteValue, 10);
+    const minuteNumber = Number.parseInt(liveMinuteMatch[1], 10);
 
     if (Number.isFinite(minuteNumber) && minuteNumber > 90) {
-      return `Suplementario · ${minuteValue}'`;
+      return "En vivo · ET";
     }
 
     if (Number.isFinite(minuteNumber) && minuteNumber > 45) {
-      return `2T · ${minuteValue}'`;
+      return "En vivo · 2T";
     }
 
-    return `1T · ${minuteValue}'`;
+    return "En vivo · 1T";
   }
 
   if (normalizedStatus === "HT") {
     return "Entretiempo";
   }
 
+  if (normalizedStatus === "BT") {
+    return "CB";
+  }
+
   if (normalizedStatus === "ET") {
-    return "Suplementario";
+    return "En vivo · ET";
   }
 
   if (normalizedStatus === "P" || normalizedStatus === "PEN_LIVE") {
     return "Penales";
   }
 
-  const matchStartMs = getMatchStartMs(match);
-  if (matchStartMs === null) {
-    if (
-      normalizedStatus === "2H" ||
-      normalizedStatus === "INPLAY_2ND_HALF" ||
-      normalizedStatus === "INT"
-    ) {
-      return "2T";
-    }
-
-    return "1T";
-  }
-
-  const elapsedMinutes = Math.max(
-    1,
-    Math.floor((nowMs - matchStartMs) / (60 * 1000)),
-  );
-
   if (
     normalizedStatus === "2H" ||
     normalizedStatus === "INPLAY_2ND_HALF" ||
     normalizedStatus === "INT"
   ) {
-    return `2T · ${Math.max(46, elapsedMinutes - 14)}'`;
+    return normalizedStatus === "INT" ? "Pausa" : "En vivo · 2T";
   }
 
-  return `1T · ${Math.min(45, elapsedMinutes)}'`;
+  if (
+    normalizedStatus === "1H" ||
+    normalizedStatus === "INPLAY_1ST_HALF" ||
+    normalizedStatus === "LIVE" ||
+    normalizedStatus === "IN PLAY" ||
+    normalizedStatus === "INPLAY"
+  ) {
+    return "En vivo · 1T";
+  }
+
+  void nowMs;
+  void match.timestamp;
+  void match.date;
+  void match.time;
+  return "En vivo";
 }
 
 function getInstallPlatform(): InstallPlatform {
@@ -555,84 +554,99 @@ function App() {
           <>
             {liveMatch && (
               <section className="mb-8">
-                <article className="overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
-                  <div className="border-b border-emerald-100 bg-linear-to-r from-emerald-50 to-white px-5 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                          En vivo
-                        </p>
-                        <h2 className="mt-1 text-xl font-semibold text-zinc-950">
-                          Partido en juego ahora
-                        </h2>
-                      </div>
-                      <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
-                        {formatLiveMatchTime(liveMatch, liveClockMs)}
-                      </span>
-                    </div>
-                  </div>
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                    En vivo
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+                    {liveMatches.length > 1
+                      ? "Partidos en juego ahora"
+                      : "Partido en juego ahora"}
+                  </h2>
+                </div>
 
-                  <div className="grid gap-4 px-5 py-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
-                    <div className="flex items-center gap-3">
-                      {liveMatch.homeTeam.badgeUrl ? (
-                        <img
-                          src={liveMatch.homeTeam.badgeUrl}
-                          alt={liveMatch.homeTeam.name}
-                          className="h-10 w-10 object-contain"
-                        />
-                      ) : (
-                        <div className="grid h-10 w-10 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
-                          {liveMatch.homeTeam.name.slice(0, 1)}
+                <div
+                  className={`${
+                    liveMatches.length > 1
+                      ? "flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory"
+                      : "block"
+                  }`}
+                >
+                  {liveMatches.map((match) => (
+                    <article
+                      key={match.id}
+                      className={`overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm ${
+                        liveMatches.length > 1
+                          ? "min-w-[280px] max-w-[320px] shrink-0 snap-start"
+                          : ""
+                      }`}
+                    >
+                      <div className="border-b border-emerald-100 bg-linear-to-r from-emerald-50 to-white px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                              Grupo {match.group}
+                            </p>
+                            <p className="mt-1 truncate text-sm font-medium text-zinc-600">
+                              {match.venue ?? "Sede a confirmar"}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
+                            {formatLiveMatchTime(match, liveClockMs)}
+                          </span>
                         </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-zinc-500">Local</p>
-                        <p className="truncate text-lg font-semibold text-zinc-950">
-                          {liveMatch.homeTeam.name}
-                        </p>
                       </div>
-                    </div>
 
-                    <div className="flex items-center justify-center gap-3 rounded-2xl bg-zinc-950 px-5 py-4 text-white">
-                      <span className="text-3xl font-bold">
-                        {liveMatch.homeTeam.score ?? 0}
-                      </span>
-                      <span className="text-sm font-medium uppercase tracking-wide text-zinc-300">
-                        vs
-                      </span>
-                      <span className="text-3xl font-bold">
-                        {liveMatch.awayTeam.score ?? 0}
-                      </span>
-                    </div>
+                      <div className="px-4 py-4">
+                        <div className="grid gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              {match.homeTeam.badgeUrl ? (
+                                <img
+                                  src={match.homeTeam.badgeUrl}
+                                  alt={match.homeTeam.name}
+                                  className="h-9 w-9 object-contain"
+                                />
+                              ) : (
+                                <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                  {match.homeTeam.name.slice(0, 1)}
+                                </div>
+                              )}
+                              <p className="truncate text-base font-semibold text-zinc-950">
+                                {match.homeTeam.name}
+                              </p>
+                            </div>
+                            <span className="text-2xl font-bold text-zinc-950">
+                              {match.homeTeam.score ?? 0}
+                            </span>
+                          </div>
 
-                    <div className="flex items-center justify-start gap-3 md:justify-end">
-                      <div className="min-w-0 text-left md:text-right">
-                        <p className="truncate text-sm text-zinc-500">
-                          Visitante
-                        </p>
-                        <p className="truncate text-lg font-semibold text-zinc-950">
-                          {liveMatch.awayTeam.name}
-                        </p>
-                      </div>
-                      {liveMatch.awayTeam.badgeUrl ? (
-                        <img
-                          src={liveMatch.awayTeam.badgeUrl}
-                          alt={liveMatch.awayTeam.name}
-                          className="h-10 w-10 object-contain"
-                        />
-                      ) : (
-                        <div className="grid h-10 w-10 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
-                          {liveMatch.awayTeam.name.slice(0, 1)}
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              {match.awayTeam.badgeUrl ? (
+                                <img
+                                  src={match.awayTeam.badgeUrl}
+                                  alt={match.awayTeam.name}
+                                  className="h-9 w-9 object-contain"
+                                />
+                              ) : (
+                                <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                  {match.awayTeam.name.slice(0, 1)}
+                                </div>
+                              )}
+                              <p className="truncate text-base font-semibold text-zinc-950">
+                                {match.awayTeam.name}
+                              </p>
+                            </div>
+                            <span className="text-2xl font-bold text-zinc-950">
+                              {match.awayTeam.score ?? 0}
+                            </span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-zinc-100 px-5 py-4 text-sm text-zinc-600">
-                    Grupo {liveMatch.group} ·{" "}
-                    {liveMatch.venue ?? "Sede a confirmar"}
-                  </div>
-                </article>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </section>
             )}
 

@@ -6,6 +6,7 @@ import {
   type WorldCupGroupTeam,
 } from "../services";
 import {
+  getWorldCup2026LiveMatches,
   getWorldCup2026PlayedMatches,
   type WorldCupResultMatch,
 } from "../services/results";
@@ -27,6 +28,108 @@ type GroupStanding = {
   groupName: string;
   standings: TeamStanding[];
 };
+
+const LIVE_MATCH_STATUSES = new Set([
+  "LIVE",
+  "1H",
+  "2H",
+  "HT",
+  "ET",
+  "BT",
+  "P",
+  "INT",
+  "IN PLAY",
+  "INPLAY",
+  "INPLAY_1ST_HALF",
+  "INPLAY_2ND_HALF",
+  "PEN_LIVE",
+]);
+
+function normalizeStatus(status: string | null | undefined): string {
+  return status?.trim().toUpperCase() ?? "";
+}
+
+function isLiveMatchStatus(status: string | null | undefined): boolean {
+  const normalizedStatus = normalizeStatus(status);
+  if (!normalizedStatus) {
+    return false;
+  }
+
+  if (LIVE_MATCH_STATUSES.has(normalizedStatus)) {
+    return true;
+  }
+
+  return /^\d{1,3}(\+\d{1,2})?'?$/.test(normalizedStatus);
+}
+
+function getMatchPeriodLabel(status: string): string | null {
+  if (/^\d{1,3}(\+\d{1,2})?'?$/.test(status)) {
+    const minute = Number.parseInt(status, 10);
+    if (Number.isFinite(minute)) {
+      if (minute <= 45) return "1T";
+      if (minute <= 90) return "2T";
+      if (minute <= 120) return "ET";
+    }
+
+    return "En juego";
+  }
+
+  switch (status) {
+    case "1H":
+    case "INPLAY_1ST_HALF":
+      return "1T";
+    case "2H":
+    case "INPLAY_2ND_HALF":
+      return "2T";
+    case "ET":
+      return "ET";
+    case "P":
+    case "PEN_LIVE":
+      return "Penales";
+    default:
+      return null;
+  }
+}
+
+function formatLiveMatchState(
+  status: string | null | undefined,
+): string | null {
+  const normalizedStatus = normalizeStatus(status);
+  if (!normalizedStatus) {
+    return null;
+  }
+
+  if (/^\d{1,3}(\+\d{1,2})?'?$/.test(normalizedStatus)) {
+    const period = getMatchPeriodLabel(normalizedStatus);
+    return period ? `${normalizedStatus} · ${period}` : normalizedStatus;
+  }
+
+  switch (normalizedStatus) {
+    case "HT":
+      return "Entretiempo";
+    case "BT":
+      return "CB";
+    case "INT":
+      return "Pausa";
+    case "P":
+    case "PEN_LIVE":
+      return "Penales";
+    case "1H":
+    case "INPLAY_1ST_HALF":
+      return "En juego · 1T";
+    case "2H":
+    case "INPLAY_2ND_HALF":
+      return "En juego · 2T";
+    case "ET":
+      return "En juego · ET";
+    case "LIVE":
+    case "IN PLAY":
+    case "INPLAY":
+      return "En juego";
+    default:
+      return normalizedStatus;
+  }
+}
 
 function formatMatchDate(match: WorldCupGroupMatch): string {
   const rawTimestamp = match.timestamp?.trim() ?? "";
@@ -141,9 +244,14 @@ function buildStandings(
   });
 }
 
+function getTeamKey(team: Pick<WorldCupGroupTeam, "id" | "name">): string {
+  return team.id ?? team.name;
+}
+
 export default function Fixture() {
   const [groups, setGroups] = useState<WorldCupGroup[]>([]);
   const [playedMatches, setPlayedMatches] = useState<WorldCupResultMatch[]>([]);
+  const [liveMatches, setLiveMatches] = useState<WorldCupResultMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openRound, setOpenRound] = useState<number>(1);
@@ -156,10 +264,12 @@ export default function Fixture() {
         setIsLoading(true);
         setError(null);
 
-        const [nextGroups, nextPlayedMatches] = await Promise.all([
-          getWorldCup2026Groups(),
-          getWorldCup2026PlayedMatches(),
-        ]);
+        const [nextGroups, nextPlayedMatches, nextLiveMatches] =
+          await Promise.all([
+            getWorldCup2026Groups(),
+            getWorldCup2026PlayedMatches(),
+            getWorldCup2026LiveMatches(),
+          ]);
 
         if (!isMounted) {
           return;
@@ -167,6 +277,7 @@ export default function Fixture() {
 
         setGroups(nextGroups);
         setPlayedMatches(nextPlayedMatches);
+        setLiveMatches(nextLiveMatches);
       } catch (loadError) {
         if (!isMounted) {
           return;
@@ -215,6 +326,30 @@ export default function Fixture() {
     () => new Map(playedMatches.map((match) => [match.id, match] as const)),
     [playedMatches],
   );
+
+  const liveMatchesById = useMemo(
+    () => new Map(liveMatches.map((match) => [match.id, match] as const)),
+    [liveMatches],
+  );
+
+  const liveScoreByTeamKey = useMemo(() => {
+    const scores = new Map<string, string>();
+
+    for (const match of liveMatches) {
+      if (
+        typeof match.homeTeam.score !== "number" ||
+        typeof match.awayTeam.score !== "number"
+      ) {
+        continue;
+      }
+
+      const partialScore = `${match.homeTeam.score} - ${match.awayTeam.score}`;
+      scores.set(getTeamKey(match.homeTeam), partialScore);
+      scores.set(getTeamKey(match.awayTeam), partialScore);
+    }
+
+    return scores;
+  }, [liveMatches]);
 
   return (
     <section className="space-y-6">
@@ -277,64 +412,75 @@ export default function Fixture() {
                       </tr>
                     </thead>
                     <tbody>
-                      {group.standings.map((row, index) => (
-                        <tr
-                          key={row.team.id ?? row.team.name}
-                          className={`border-b border-zinc-100 last:border-b-0 ${
-                            index < 3 ? "bg-emerald-50/60" : "bg-white"
-                          }`}
-                        >
-                          <td className="px-4 py-3 font-semibold text-zinc-700">
-                            {index + 1}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              {row.team.badgeUrl ? (
-                                <img
-                                  src={row.team.badgeUrl}
-                                  alt={row.team.name}
-                                  className="h-6 w-6 object-contain"
-                                />
+                      {group.standings.map((row, index) => {
+                        const liveScore = liveScoreByTeamKey.get(
+                          getTeamKey(row.team),
+                        );
+
+                        return (
+                          <tr
+                            key={row.team.id ?? row.team.name}
+                            className={`border-b border-zinc-100 last:border-b-0 ${
+                              index < 3 ? "bg-emerald-50/60" : "bg-white"
+                            }`}
+                          >
+                            <td className="px-4 py-3 font-semibold text-zinc-700">
+                              {index + 1}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                {row.team.badgeUrl ? (
+                                  <img
+                                    src={row.team.badgeUrl}
+                                    alt={row.team.name}
+                                    className="h-6 w-6 object-contain"
+                                  />
+                                ) : (
+                                  <div className="grid h-6 w-6 place-items-center rounded-md bg-zinc-100 text-[10px] font-bold text-zinc-700">
+                                    {row.team.name.slice(0, 1)}
+                                  </div>
+                                )}
+                                <span className="font-medium text-zinc-900">
+                                  {row.team.name}
+                                </span>
+                                {liveScore && (
+                                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                    {liveScore}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {index < 3 ? (
+                                <span className="rounded-md bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                                  Clasifica
+                                </span>
                               ) : (
-                                <div className="grid h-6 w-6 place-items-center rounded-md bg-zinc-100 text-[10px] font-bold text-zinc-700">
-                                  {row.team.name.slice(0, 1)}
-                                </div>
+                                <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                                  En juego
+                                </span>
                               )}
-                              <span className="font-medium text-zinc-900">
-                                {row.team.name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            {index < 3 ? (
-                              <span className="rounded-md bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                                Clasifica
-                              </span>
-                            ) : (
-                              <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                                En juego
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-center font-semibold text-zinc-950">
-                            {row.points}
-                          </td>
-                          <td className="px-3 py-3 text-center text-zinc-700">
-                            {row.played}
-                          </td>
-                          <td className="px-3 py-3 text-center text-zinc-700">
-                            {row.goalsFor}
-                          </td>
-                          <td className="px-3 py-3 text-center text-zinc-700">
-                            {row.goalsAgainst}
-                          </td>
-                          <td className="px-3 py-3 text-center text-zinc-700">
-                            {row.goalDifference > 0
-                              ? `+${row.goalDifference}`
-                              : row.goalDifference}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-3 py-3 text-center font-semibold text-zinc-950">
+                              {row.points}
+                            </td>
+                            <td className="px-3 py-3 text-center text-zinc-700">
+                              {row.played}
+                            </td>
+                            <td className="px-3 py-3 text-center text-zinc-700">
+                              {row.goalsFor}
+                            </td>
+                            <td className="px-3 py-3 text-center text-zinc-700">
+                              {row.goalsAgainst}
+                            </td>
+                            <td className="px-3 py-3 text-center text-zinc-700">
+                              {row.goalDifference > 0
+                                ? `+${row.goalDifference}`
+                                : row.goalDifference}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -379,6 +525,14 @@ export default function Fixture() {
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                           {roundData.matches.map((match) => {
                             const played = playedMatchesById.get(match.id);
+                            const live = liveMatchesById.get(match.id);
+                            const activeMatch = live ?? played;
+                            const liveState = formatLiveMatchState(
+                              live?.status ?? match.status,
+                            );
+                            const isLive = isLiveMatchStatus(
+                              live?.status ?? match.status,
+                            );
 
                             return (
                               <article
@@ -394,8 +548,16 @@ export default function Fixture() {
                                       {formatMatchDate(match)}
                                     </p>
                                   </div>
-                                  <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium text-zinc-600">
-                                    {match.status ?? "Programado"}
+                                  <span
+                                    className={`rounded-md px-3 py-1 text-[11px] font-medium ${
+                                      isLive
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : "bg-zinc-100 text-zinc-600"
+                                    }`}
+                                  >
+                                    {isLive
+                                      ? (liveState ?? "En vivo")
+                                      : (match.status ?? "Programado")}
                                   </span>
                                 </div>
 
@@ -418,7 +580,7 @@ export default function Fixture() {
                                       </span>
                                     </div>
                                     <strong className="text-base text-zinc-950">
-                                      {played?.homeTeam.score ?? "-"}
+                                      {activeMatch?.homeTeam.score ?? "-"}
                                     </strong>
                                   </div>
 
@@ -440,7 +602,7 @@ export default function Fixture() {
                                       </span>
                                     </div>
                                     <strong className="text-base text-zinc-950">
-                                      {played?.awayTeam.score ?? "-"}
+                                      {activeMatch?.awayTeam.score ?? "-"}
                                     </strong>
                                   </div>
                                 </div>
