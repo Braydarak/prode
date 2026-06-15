@@ -1,7 +1,50 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "ProdeSans";
+  src: url("./assets/typography/145d7d15e4d79baa-s.p.woff") format("woff");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ProdeSans";
+  src: url("./assets/typography/1927f68609cd9595-s.p.woff") format("woff");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ProdeSans";
+  src: url("./assets/typography/67cd960e7f9dc604-s.p.woff") format("woff");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ProdeSans";
+  src: url("./assets/typography/7c47f8730b74dd15-s.p.woff") format("woff");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family:
+    "ProdeSans",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
 input,

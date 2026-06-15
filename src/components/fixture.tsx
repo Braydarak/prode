@@ -582,7 +582,7 @@ export default function Fixture() {
                                         {match.homeTeam.name}
                                       </span>
                                     </div>
-                                    <strong className="text-base text-zinc-950">
+                                    <strong className="text-lg text-zinc-950">
                                       {activeMatch?.homeTeam.score ?? "-"}
                                     </strong>
                                   </div>
@@ -604,7 +604,7 @@ export default function Fixture() {
                                         {match.awayTeam.name}
                                       </span>
                                     </div>
-                                    <strong className="text-base text-zinc-950">
+                                    <strong className="text-lg text-zinc-950">
                                       {activeMatch?.awayTeam.score ?? "-"}
                                     </strong>
                                   </div>
