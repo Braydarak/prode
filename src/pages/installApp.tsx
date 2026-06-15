@@ -103,6 +103,10 @@ export default function InstallAppPage({
             sesion y te queda mucho mas comoda para abrir desde el inicio.
           </p>
 
+          <p className="mt-3 text-sm text-zinc-200 md:text-base">
+            Si preferis, tambien podes ingresar desde la PC sin instalar la app.
+          </p>
+
           {platform === "android" ? (
             <div className="mt-8 space-y-4">
               <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">

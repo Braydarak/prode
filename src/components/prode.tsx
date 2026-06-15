@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import wc26Logo from "../assets/WC26_Logo.png";
 import { getWorldCup2026Groups, type WorldCupGroupMatch } from "../services";
 import {
   onUserPredictionsSnapshot,
@@ -188,26 +189,17 @@ export default function Prode({ userId }: ProdeProps) {
     });
   }, [matches, predictionsByMatchId]);
 
-  const enrichedMatches = useMemo(() => {
+  const pendingMatches = useMemo(() => {
     return matches
       .map((match) => ({
         match,
         date: getMatchStartDate(match),
-        hasPrediction: Boolean(predictionsByMatchId[match.id]),
       }))
-      .sort((a, b) => {
-        if (a.hasPrediction !== b.hasPrediction) {
-          return a.hasPrediction ? 1 : -1;
-        }
-
-        return (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0);
-      });
+      .filter(({ match }) => !predictionsByMatchId[match.id])
+      .sort((a, b) => (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0));
   }, [matches, predictionsByMatchId]);
 
-  const pendingMatchesCount = useMemo(
-    () => matches.filter((match) => !predictionsByMatchId[match.id]).length,
-    [matches, predictionsByMatchId],
-  );
+  const pendingMatchesCount = pendingMatches.length;
 
   async function handleSaveAll() {
     try {
@@ -308,18 +300,44 @@ export default function Prode({ userId }: ProdeProps) {
 
         {isLoading ? (
           <Loader label="Cargando partidos..." />
-        ) : enrichedMatches.length === 0 ? (
-          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-sm text-zinc-600">
-            No hay partidos disponibles para predecir en las próximas 48 horas.
+        ) : pendingMatches.length === 0 ? (
+          <div className="overflow-hidden rounded-3xl border border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdfa_45%,#eff6ff_100%)] shadow-sm">
+            <div className="grid gap-6 px-6 py-8 md:grid-cols-[auto_1fr] md:items-center md:px-8">
+              <div className="flex justify-center md:justify-start">
+                <div className="grid h-24 w-24 place-items-center rounded-3xl bg-white/80 shadow-[0_20px_40px_rgba(16,24,40,0.08)] ring-1 ring-emerald-100">
+                  <img
+                    src={wc26Logo}
+                    alt="Prode Mundial"
+                    className="h-16 w-16 object-contain"
+                  />
+                </div>
+              </div>
+
+              <div className="text-center md:text-left">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                  Todo al dia
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-zinc-950">
+                  Todavia no hay nuevos partidos para predecir
+                </h3>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600">
+                  Ya cargaste todo lo disponible en las proximas 48 horas.
+                  Cuando aparezcan nuevos cruces, los vas a ver aca para
+                  completar tus pronosticos.
+                </p>
+                <div className="mt-5 inline-flex rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-xs font-medium text-emerald-800">
+                  Volve mas tarde para seguir jugando
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {enrichedMatches.map(({ match, date, hasPrediction }) => {
+            {pendingMatches.map(({ match, date }) => {
               const draft = drafts[match.id] ?? {
                 homeGoals: "",
                 awayGoals: "",
               };
-              const saved = predictionsByMatchId[match.id];
               const isInvalid =
                 showValidation && validation.invalidMatchIds.includes(match.id);
               const inputBase =
@@ -348,16 +366,9 @@ export default function Prode({ userId }: ProdeProps) {
                       <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium text-zinc-600">
                         {match.status ?? "Programado"}
                       </span>
-                      {!hasPrediction && (
-                        <span className="shrink-0 rounded-md bg-amber-100 px-3 py-1 text-[11px] font-medium text-amber-800">
-                          Sin predicción
-                        </span>
-                      )}
-                      {saved && (
-                        <span className="shrink-0 rounded-md bg-emerald-100 px-3 py-1 text-[11px] font-medium text-emerald-800">
-                          Guardado
-                        </span>
-                      )}
+                      <span className="shrink-0 rounded-md bg-amber-100 px-3 py-1 text-[11px] font-medium text-amber-800">
+                        Nueva
+                      </span>
                     </div>
                   </header>
 
@@ -384,32 +395,26 @@ export default function Prode({ userId }: ProdeProps) {
                             </span>
                           </label>
                         </div>
-                        {saved ? (
-                          <div className="flex h-10 w-16 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800">
-                            {saved.predictedHomeGoals}
-                          </div>
-                        ) : (
-                          <input
-                            inputMode="numeric"
-                            value={draft.homeGoals}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              touchedRef.current[match.id] = true;
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [match.id]: {
-                                  ...(prev[match.id] ?? {
-                                    homeGoals: "",
-                                    awayGoals: "",
-                                  }),
-                                  homeGoals: value,
-                                },
-                              }));
-                            }}
-                            className={`${inputBase} ${isInvalid ? inputInvalid : inputValid} mt-0 w-16 text-center`}
-                            placeholder="0"
-                          />
-                        )}
+                        <input
+                          inputMode="numeric"
+                          value={draft.homeGoals}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            touchedRef.current[match.id] = true;
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [match.id]: {
+                                ...(prev[match.id] ?? {
+                                  homeGoals: "",
+                                  awayGoals: "",
+                                }),
+                                homeGoals: value,
+                              },
+                            }));
+                          }}
+                          className={`${inputBase} ${isInvalid ? inputInvalid : inputValid} mt-0 w-16 text-center`}
+                          placeholder="0"
+                        />
                       </div>
                     </div>
 
@@ -435,32 +440,26 @@ export default function Prode({ userId }: ProdeProps) {
                             </span>
                           </label>
                         </div>
-                        {saved ? (
-                          <div className="flex h-10 w-16 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800">
-                            {saved.predictedAwayGoals}
-                          </div>
-                        ) : (
-                          <input
-                            inputMode="numeric"
-                            value={draft.awayGoals}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              touchedRef.current[match.id] = true;
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [match.id]: {
-                                  ...(prev[match.id] ?? {
-                                    homeGoals: "",
-                                    awayGoals: "",
-                                  }),
-                                  awayGoals: value,
-                                },
-                              }));
-                            }}
-                            className={`${inputBase} ${isInvalid ? inputInvalid : inputValid} mt-0 w-16 text-center`}
-                            placeholder="0"
-                          />
-                        )}
+                        <input
+                          inputMode="numeric"
+                          value={draft.awayGoals}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            touchedRef.current[match.id] = true;
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [match.id]: {
+                                ...(prev[match.id] ?? {
+                                  homeGoals: "",
+                                  awayGoals: "",
+                                }),
+                                awayGoals: value,
+                              },
+                            }));
+                          }}
+                          className={`${inputBase} ${isInvalid ? inputInvalid : inputValid} mt-0 w-16 text-center`}
+                          placeholder="0"
+                        />
                       </div>
                     </div>
                   </div>

@@ -151,7 +151,7 @@ export default function AllPredictionsPage({
             Predicciones
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-zinc-950">
-            Mis predicciones y resultados reales
+            Tus predicciones y resultados reales
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
             Se muestran tus pronósticos con el mismo estilo visual del fixture,

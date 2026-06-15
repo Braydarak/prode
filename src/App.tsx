@@ -3,6 +3,8 @@ import "./App.css";
 import { getWorldCup2026Groups } from "./services";
 import {
   getWorldCup2026ResultsByGroup,
+  getWorldCup2026LiveMatches,
+  type WorldCupResultMatch,
   type WorldCupResultsByGroup,
 } from "./services/results";
 import AllPredictionsPage from "./pages/allPredictions";
@@ -61,6 +63,72 @@ function getMatchStartMs(match: {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeMatchStatus(status: string | null | undefined): string {
+  return status?.trim().toUpperCase() ?? "";
+}
+
+function formatLiveMatchTime(
+  match: Pick<WorldCupResultMatch, "status" | "timestamp" | "date" | "time">,
+  nowMs: number,
+): string {
+  const normalizedStatus = normalizeMatchStatus(match.status);
+  const liveMinuteMatch = normalizedStatus.match(/^(\d{1,3}(?:\+\d{1,2})?)'?$/);
+  if (liveMinuteMatch) {
+    const minuteValue = liveMinuteMatch[1];
+    const minuteNumber = Number.parseInt(minuteValue, 10);
+
+    if (Number.isFinite(minuteNumber) && minuteNumber > 90) {
+      return `Suplementario · ${minuteValue}'`;
+    }
+
+    if (Number.isFinite(minuteNumber) && minuteNumber > 45) {
+      return `2T · ${minuteValue}'`;
+    }
+
+    return `1T · ${minuteValue}'`;
+  }
+
+  if (normalizedStatus === "HT") {
+    return "Entretiempo";
+  }
+
+  if (normalizedStatus === "ET") {
+    return "Suplementario";
+  }
+
+  if (normalizedStatus === "P" || normalizedStatus === "PEN_LIVE") {
+    return "Penales";
+  }
+
+  const matchStartMs = getMatchStartMs(match);
+  if (matchStartMs === null) {
+    if (
+      normalizedStatus === "2H" ||
+      normalizedStatus === "INPLAY_2ND_HALF" ||
+      normalizedStatus === "INT"
+    ) {
+      return "2T";
+    }
+
+    return "1T";
+  }
+
+  const elapsedMinutes = Math.max(
+    1,
+    Math.floor((nowMs - matchStartMs) / (60 * 1000)),
+  );
+
+  if (
+    normalizedStatus === "2H" ||
+    normalizedStatus === "INPLAY_2ND_HALF" ||
+    normalizedStatus === "INT"
+  ) {
+    return `2T · ${Math.max(46, elapsedMinutes - 14)}'`;
+  }
+
+  return `1T · ${Math.min(45, elapsedMinutes)}'`;
+}
+
 function getInstallPlatform(): InstallPlatform {
   if (typeof navigator === "undefined") return "other";
 
@@ -92,13 +160,15 @@ function isRunningStandalone(): boolean {
 
   return Boolean(
     window.matchMedia?.("(display-mode: standalone)").matches ||
-      standaloneNavigator.standalone ||
-      document.referrer.startsWith("android-app://"),
+    standaloneNavigator.standalone ||
+    document.referrer.startsWith("android-app://"),
   );
 }
 
 function App() {
-  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
+  const [currentPath, setCurrentPath] = useState(
+    () => window.location.pathname,
+  );
   const [user, setUser] = useState<User | null>(() => getCurrentGoogleUser());
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [installPlatform, setInstallPlatform] =
@@ -108,14 +178,17 @@ function App() {
   const [resultsByGroup, setResultsByGroup] = useState<
     WorldCupResultsByGroup[]
   >([]);
+  const [liveMatches, setLiveMatches] = useState<WorldCupResultMatch[]>([]);
   const [leaderboardUsers, setLeaderboardUsers] = useState<UsersTableRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
   const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
+  const [liveClockMs, setLiveClockMs] = useState(() => Date.now());
   const isMundialPage = currentPath === "/mundial";
   const isAllPredictionsPage = currentPath === "/predicciones";
   const isUsersTablePage = currentPath === "/posiciones";
+  const liveMatch = liveMatches[0] ?? null;
 
   useEffect(() => {
     function refreshInstallStatus() {
@@ -129,7 +202,9 @@ function App() {
       setIsInstallCheckComplete(true);
     }
 
-    const standaloneMediaQuery = window.matchMedia?.("(display-mode: standalone)");
+    const standaloneMediaQuery = window.matchMedia?.(
+      "(display-mode: standalone)",
+    );
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
@@ -182,6 +257,7 @@ function App() {
 
         if (!nextUser) {
           setResultsByGroup([]);
+          setLiveMatches([]);
           setLeaderboardUsers([]);
           setIsLoading(true);
           setOfficialStartMs(null);
@@ -198,6 +274,20 @@ function App() {
       unsubscribe?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!liveMatch) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setLiveClockMs(Date.now());
+    }, 30000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [liveMatch]);
 
   useEffect(() => {
     if (!user) {
@@ -244,10 +334,12 @@ function App() {
 
     async function loadData() {
       try {
-        const [worldCupResults, worldCupGroups] = await Promise.all([
-          getWorldCup2026ResultsByGroup(),
-          getWorldCup2026Groups(),
-        ]);
+        const [worldCupResults, worldCupGroups, nextLiveMatches] =
+          await Promise.all([
+            getWorldCup2026ResultsByGroup(),
+            getWorldCup2026Groups(),
+            getWorldCup2026LiveMatches().catch(() => []),
+          ]);
 
         if (!isMounted) {
           return;
@@ -270,6 +362,8 @@ function App() {
           : null;
 
         setResultsByGroup(worldCupResults);
+        setLiveMatches(nextLiveMatches);
+        setLiveClockMs(Date.now());
         setOfficialStartMs(nextOfficialStartMs);
         setHasOfficialStartBegun(
           nextOfficialStartMs === null
@@ -459,6 +553,89 @@ function App() {
           />
         ) : (
           <>
+            {liveMatch && (
+              <section className="mb-8">
+                <article className="overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
+                  <div className="border-b border-emerald-100 bg-linear-to-r from-emerald-50 to-white px-5 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                          En vivo
+                        </p>
+                        <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+                          Partido en juego ahora
+                        </h2>
+                      </div>
+                      <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
+                        {formatLiveMatchTime(liveMatch, liveClockMs)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 px-5 py-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
+                    <div className="flex items-center gap-3">
+                      {liveMatch.homeTeam.badgeUrl ? (
+                        <img
+                          src={liveMatch.homeTeam.badgeUrl}
+                          alt={liveMatch.homeTeam.name}
+                          className="h-10 w-10 object-contain"
+                        />
+                      ) : (
+                        <div className="grid h-10 w-10 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                          {liveMatch.homeTeam.name.slice(0, 1)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-zinc-500">Local</p>
+                        <p className="truncate text-lg font-semibold text-zinc-950">
+                          {liveMatch.homeTeam.name}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-3 rounded-2xl bg-zinc-950 px-5 py-4 text-white">
+                      <span className="text-3xl font-bold">
+                        {liveMatch.homeTeam.score ?? 0}
+                      </span>
+                      <span className="text-sm font-medium uppercase tracking-wide text-zinc-300">
+                        vs
+                      </span>
+                      <span className="text-3xl font-bold">
+                        {liveMatch.awayTeam.score ?? 0}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-start gap-3 md:justify-end">
+                      <div className="min-w-0 text-left md:text-right">
+                        <p className="truncate text-sm text-zinc-500">
+                          Visitante
+                        </p>
+                        <p className="truncate text-lg font-semibold text-zinc-950">
+                          {liveMatch.awayTeam.name}
+                        </p>
+                      </div>
+                      {liveMatch.awayTeam.badgeUrl ? (
+                        <img
+                          src={liveMatch.awayTeam.badgeUrl}
+                          alt={liveMatch.awayTeam.name}
+                          className="h-10 w-10 object-contain"
+                        />
+                      ) : (
+                        <div className="grid h-10 w-10 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                          {liveMatch.awayTeam.name.slice(0, 1)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-zinc-100 px-5 py-4 text-sm text-zinc-600">
+                    Grupo {liveMatch.group} ·{" "}
+                    {liveMatch.venue ?? "Sede a confirmar"}
+                  </div>
+                </article>
+              </section>
+            )}
+
             <section id="mis-predicciones">
               <Prode userId={user.uid} />
             </section>

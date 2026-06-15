@@ -5,6 +5,21 @@ import {
 } from "./index";
 
 const FINAL_MATCH_STATUSES = new Set(["FT", "AET", "PEN", "AWD", "WO", "AP"]);
+const LIVE_MATCH_STATUSES = new Set([
+  "LIVE",
+  "1H",
+  "2H",
+  "HT",
+  "ET",
+  "BT",
+  "P",
+  "INT",
+  "IN PLAY",
+  "INPLAY",
+  "INPLAY_1ST_HALF",
+  "INPLAY_2ND_HALF",
+  "PEN_LIVE",
+]);
 
 export type WorldCupResultTeam = {
   id: string | null;
@@ -49,17 +64,37 @@ function parseNullableNumber(value: string | number | null): number | null {
   return null;
 }
 
+function normalizeStatus(status: string | null | undefined): string {
+  return status?.trim().toUpperCase() ?? "";
+}
+
 function isPlayedMatch(event: SportsDbEvent): boolean {
   const homeScore = parseNullableNumber(event.intHomeScore);
   const awayScore = parseNullableNumber(event.intAwayScore);
+  const normalizedStatus = normalizeStatus(event.strStatus);
 
-  if (homeScore !== null && awayScore !== null) {
+  if (FINAL_MATCH_STATUSES.has(normalizedStatus)) {
     return true;
   }
 
-  return event.strStatus
-    ? FINAL_MATCH_STATUSES.has(event.strStatus.trim().toUpperCase())
-    : false;
+  if (!normalizedStatus) {
+    return homeScore !== null && awayScore !== null;
+  }
+
+  return false;
+}
+
+function isLiveMatch(event: SportsDbEvent): boolean {
+  const normalizedStatus = normalizeStatus(event.strStatus);
+  if (!normalizedStatus) {
+    return false;
+  }
+
+  if (LIVE_MATCH_STATUSES.has(normalizedStatus)) {
+    return true;
+  }
+
+  return /^\d{1,3}(\+\d{1,2})?'?$/.test(normalizedStatus);
 }
 
 function getSortableDate(match: WorldCupResultMatch): string {
@@ -107,6 +142,17 @@ export async function getWorldCup2026PlayedMatches(): Promise<
 
   return events
     .filter(isPlayedMatch)
+    .map(mapEventToResult)
+    .sort((matchA, matchB) =>
+      getSortableDate(matchA).localeCompare(getSortableDate(matchB)),
+    );
+}
+
+export async function getWorldCup2026LiveMatches(): Promise<WorldCupResultMatch[]> {
+  const events = await getWorldCup2026GroupStageEvents();
+
+  return events
+    .filter(isLiveMatch)
     .map(mapEventToResult)
     .sort((matchA, matchB) =>
       getSortableDate(matchA).localeCompare(getSortableDate(matchB)),
