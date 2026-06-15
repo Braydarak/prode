@@ -323,7 +323,7 @@ export default function Prode({ userId }: ProdeProps) {
               const isInvalid =
                 showValidation && validation.invalidMatchIds.includes(match.id);
               const inputBase =
-                "mt-2 w-full rounded-md border bg-white px-3 py-2 text-sm font-semibold text-zinc-900 outline-none transition focus:ring-4";
+                "mt-2 w-12 rounded-md border bg-white px-3 py-2 text-sm font-semibold text-zinc-900 outline-none transition focus:ring-4";
               const inputValid =
                 "border-zinc-200 focus:border-emerald-400 focus:ring-emerald-100";
               const inputInvalid =
