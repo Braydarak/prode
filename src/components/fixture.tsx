@@ -363,6 +363,16 @@ export default function Fixture() {
         <Loader label="Cargando fixture y posiciones..." />
       ) : (
         <>
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-300 text-sm font-semibold text-emerald-700">
+              1
+            </span>
+            <p>
+              Las posiciones marcadas con circulo clasifican a la siguiente
+              fase.
+            </p>
+          </div>
+
           <div className="grid gap-5 xl:grid-cols-2">
             {standingsByGroup.map((group) => (
               <article
@@ -374,9 +384,6 @@ export default function Fixture() {
                     <h3 className="text-base font-semibold text-zinc-900">
                       Grupo {group.groupName}
                     </h3>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Clasifican los puestos 1, 2 y 3.
-                    </p>
                   </div>
                   <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                     {group.standings.length} equipos
@@ -390,9 +397,6 @@ export default function Fixture() {
                         <th className="px-4 py-3 text-left font-semibold">#</th>
                         <th className="px-4 py-3 text-left font-semibold">
                           Equipo
-                        </th>
-                        <th className="px-3 py-3 text-center font-semibold">
-                          Estado
                         </th>
                         <th className="px-3 py-3 text-center font-semibold">
                           PTS
@@ -424,8 +428,16 @@ export default function Fixture() {
                               index < 3 ? "bg-emerald-50/60" : "bg-white"
                             }`}
                           >
-                            <td className="px-4 py-3 font-semibold text-zinc-700">
-                              {index + 1}
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                                  index < 3
+                                    ? "border border-emerald-300 text-emerald-700"
+                                    : "text-zinc-700"
+                                }`}
+                              >
+                                {index + 1}
+                              </span>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
@@ -440,26 +452,17 @@ export default function Fixture() {
                                     {row.team.name.slice(0, 1)}
                                   </div>
                                 )}
-                                <span className="font-medium text-zinc-900">
-                                  {row.team.name}
-                                </span>
-                                {liveScore && (
-                                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                                    {liveScore}
+                                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="truncate font-medium text-zinc-900">
+                                    {row.team.name}
                                   </span>
-                                )}
+                                  {liveScore && (
+                                    <span className="inline-flex shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                      {liveScore}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </td>
-                            <td className="px-3 py-3 text-center">
-                              {index < 3 ? (
-                                <span className="rounded-md bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                                  Clasifica
-                                </span>
-                              ) : (
-                                <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                                  En juego
-                                </span>
-                              )}
                             </td>
                             <td className="px-3 py-3 text-center font-semibold text-zinc-950">
                               {row.points}

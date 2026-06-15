@@ -238,6 +238,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [currentPath]);
+
+  useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     let isMounted = true;
 

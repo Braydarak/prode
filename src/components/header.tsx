@@ -1,6 +1,6 @@
 import wc26Logo from "../assets/WC26_Logo.png";
 import { LogOut, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type HeaderProps = {
   onLogout: () => void;
@@ -21,6 +21,29 @@ export default function Header({
   currentPath = "/",
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuVisible, setMobileMenuVisible] = useState(false);
+
+  useEffect(() => {
+    if (mobileMenuOpen || !mobileMenuVisible) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMobileMenuVisible(false);
+    }, 320);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [mobileMenuOpen, mobileMenuVisible]);
+
+  function toggleMobileMenu() {
+    if (!mobileMenuOpen) {
+      setMobileMenuVisible(true);
+    }
+
+    setMobileMenuOpen((value) => !value);
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full">
@@ -67,15 +90,16 @@ export default function Header({
             <button
               type="button"
               onClick={onLogout}
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800"
+              aria-label="Cerrar sesión"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-950 text-sm font-semibold text-white transition hover:bg-zinc-800 lg:h-auto lg:w-auto lg:gap-2 lg:px-4 lg:py-2"
             >
               <LogOut size={16} strokeWidth={2.2} />
-              Cerrar sesión
+              <span className="hidden lg:inline">Cerrar sesión</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setMobileMenuOpen((value) => !value)}
+              onClick={toggleMobileMenu}
               aria-controls="mobile-menu"
               aria-expanded={mobileMenuOpen}
               aria-label={mobileMenuOpen ? "Cerrar menu" : "Abrir menu"}
@@ -103,49 +127,53 @@ export default function Header({
           </div>
         </div>
 
-        <div
-          id="mobile-menu"
-          className={`pointer-events-none absolute inset-x-0 top-full overflow-hidden lg:hidden ${
-            mobileMenuOpen ? "z-40" : "z-30"
-          }`}
-        >
+        {mobileMenuVisible && (
           <div
-            className={`pointer-events-auto min-h-[calc(100dvh-5rem)] w-full overflow-y-auto border-b border-emerald-200/70 bg-white/95 shadow-[0_24px_64px_rgba(16,24,40,0.16)] backdrop-blur-xl transition-all duration-300 ease-out ${
+            id="mobile-menu"
+            className={`absolute inset-x-0 top-full overflow-hidden lg:hidden ${
               mobileMenuOpen
-                ? "translate-x-0 opacity-100"
-                : "translate-x-full opacity-0"
+                ? "pointer-events-auto z-40"
+                : "pointer-events-none z-30"
             }`}
           >
-            <nav className="flex min-h-[calc(100dvh-5rem)] flex-col justify-center gap-3 px-5 py-8">
-              {navItems.map((item, index) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => {
-                    onNavigate(item.href);
-                    setMobileMenuOpen(false);
-                  }}
-                  style={{
-                    transitionDelay: mobileMenuOpen
-                      ? `${120 + index * 70}ms`
-                      : "0ms",
-                  }}
-                  className={`rounded-2xl px-4 py-4 text-right text-lg font-semibold transition-all duration-300 ease-out ${
-                    currentPath === item.match
-                      ? "bg-zinc-950 text-white"
-                      : "text-zinc-800 hover:bg-emerald-50"
-                  } ${
-                    mobileMenuOpen
-                      ? "translate-x-0 opacity-100"
-                      : "translate-x-6 opacity-0"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </nav>
+            <div
+              className={`min-h-[calc(100dvh-5rem)] w-full overflow-y-auto border-b border-emerald-200/70 bg-white/95 shadow-[0_24px_64px_rgba(16,24,40,0.16)] backdrop-blur-xl transition-all duration-300 ease-out ${
+                mobileMenuOpen
+                  ? "translate-x-0 opacity-100"
+                  : "translate-x-full opacity-0"
+              }`}
+            >
+              <nav className="flex min-h-[calc(100dvh-5rem)] flex-col justify-center gap-3 px-5 py-8">
+                {navItems.map((item, index) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      onNavigate(item.href);
+                      setMobileMenuOpen(false);
+                    }}
+                    style={{
+                      transitionDelay: mobileMenuOpen
+                        ? `${120 + index * 70}ms`
+                        : "0ms",
+                    }}
+                    className={`rounded-2xl px-4 py-4 text-right text-lg font-semibold transition-all duration-300 ease-out ${
+                      currentPath === item.match
+                        ? "bg-zinc-950 text-white"
+                        : "text-zinc-800 hover:bg-emerald-50"
+                    } ${
+                      mobileMenuOpen
+                        ? "translate-x-0 opacity-100"
+                        : "translate-x-6 opacity-0"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </header>
   );
