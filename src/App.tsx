@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { getWorldCup2026Groups } from "./services";
 import {
+  hasFinalMatchStatus,
   getWorldCup2026ResultsByGroup,
   getWorldCup2026LiveMatches,
   type WorldCupResultMatch,
@@ -24,29 +25,24 @@ import {
 } from "./services/googleLogin";
 import {
   calculateTotalPoints,
+  calculatePredictionPoints,
+  onAllPredictionsSnapshot,
   onLeaderboardSnapshot,
   onUserPredictionsSnapshot,
   setUserLeaderboardPoints,
+  type MatchPrediction,
   upsertUserLeaderboardProfile,
   type PlayedMatchResult,
+  type UserLeaderboardEntry,
 } from "./services/firebaseStore";
 import type { User } from "firebase/auth";
 
 const OFFICIAL_START_MATCH = {
-  group: "J",
-  homeTeam: "Argentina",
-  awayTeam: "Argelia",
+  id: "2391740",
+  label: "Argentina vs Algeria",
 };
 
 type InstallPlatform = "ios" | "android" | "other";
-
-function normalizeName(value: string | null | undefined): string {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-}
 
 function getMatchStartMs(match: {
   timestamp: string | null;
@@ -178,7 +174,10 @@ function App() {
     WorldCupResultsByGroup[]
   >([]);
   const [liveMatches, setLiveMatches] = useState<WorldCupResultMatch[]>([]);
-  const [leaderboardUsers, setLeaderboardUsers] = useState<UsersTableRow[]>([]);
+  const [leaderboardEntries, setLeaderboardEntries] = useState<
+    UserLeaderboardEntry[]
+  >([]);
+  const [allPredictions, setAllPredictions] = useState<MatchPrediction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
@@ -188,6 +187,62 @@ function App() {
   const isAllPredictionsPage = currentPath === "/predicciones";
   const isUsersTablePage = currentPath === "/posiciones";
   const liveMatch = liveMatches[0] ?? null;
+  const playedResults = useMemo<PlayedMatchResult[]>(() => {
+    return resultsByGroup.flatMap((group) =>
+      group.matches.flatMap((match) => {
+        if (
+          !hasFinalMatchStatus(match.status) ||
+          typeof match.homeTeam.score !== "number" ||
+          typeof match.awayTeam.score !== "number"
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            matchId: match.id,
+            homeGoals: match.homeTeam.score,
+            awayGoals: match.awayTeam.score,
+          },
+        ];
+      }),
+    );
+  }, [resultsByGroup]);
+  const leaderboardUsers = useMemo<UsersTableRow[]>(() => {
+    const pointsByUserId = new Map<string, number>();
+
+    if (hasOfficialStartBegun) {
+      const resultsByMatchId = new Map(
+        playedResults.map((result) => [result.matchId, result] as const),
+      );
+
+      for (const prediction of allPredictions) {
+        const result = resultsByMatchId.get(prediction.matchId);
+        if (!result) {
+          continue;
+        }
+
+        const currentPoints = pointsByUserId.get(prediction.userId) ?? 0;
+        pointsByUserId.set(
+          prediction.userId,
+          currentPoints + calculatePredictionPoints(prediction, result),
+        );
+      }
+    }
+
+    return leaderboardEntries.map((entry) => ({
+      id: entry.userId,
+      name: entry.name,
+      email: entry.email,
+      photoUrl: entry.photoUrl,
+      points: pointsByUserId.get(entry.userId) ?? 0,
+    }));
+  }, [
+    allPredictions,
+    hasOfficialStartBegun,
+    leaderboardEntries,
+    playedResults,
+  ]);
 
   useEffect(() => {
     function refreshInstallStatus() {
@@ -261,7 +316,8 @@ function App() {
         if (!nextUser) {
           setResultsByGroup([]);
           setLiveMatches([]);
-          setLeaderboardUsers([]);
+          setLeaderboardEntries([]);
+          setAllPredictions([]);
           setIsLoading(true);
           setOfficialStartMs(null);
           setHasOfficialStartBegun(true);
@@ -313,15 +369,21 @@ function App() {
     const unsubscribe = onLeaderboardSnapshot({
       limitCount: 50,
       callback: (users) => {
-        setLeaderboardUsers(
-          users.map((entry) => ({
-            id: entry.userId,
-            name: entry.name,
-            email: entry.email,
-            photoUrl: entry.photoUrl,
-            points: Number.isFinite(entry.points) ? entry.points : 0,
-          })),
-        );
+        setLeaderboardEntries(users);
+      },
+    });
+
+    return unsubscribe;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const unsubscribe = onAllPredictionsSnapshot({
+      callback: (predictions) => {
+        setAllPredictions(predictions);
       },
     });
 
@@ -350,15 +412,7 @@ function App() {
 
         const officialStartMatch = worldCupGroups
           .flatMap((group) => group.matches)
-          .find(
-            (match) =>
-              normalizeName(match.group) ===
-                normalizeName(OFFICIAL_START_MATCH.group) &&
-              normalizeName(match.homeTeam.name) ===
-                normalizeName(OFFICIAL_START_MATCH.homeTeam) &&
-              normalizeName(match.awayTeam.name) ===
-                normalizeName(OFFICIAL_START_MATCH.awayTeam),
-          );
+          .find((match) => match.id === OFFICIAL_START_MATCH.id);
 
         const nextOfficialStartMs = officialStartMatch
           ? getMatchStartMs(officialStartMatch)
@@ -369,9 +423,9 @@ function App() {
         setLiveClockMs(Date.now());
         setOfficialStartMs(nextOfficialStartMs);
         setHasOfficialStartBegun(
-          nextOfficialStartMs === null
-            ? true
-            : Date.now() >= nextOfficialStartMs,
+          officialStartMatch
+            ? hasFinalMatchStatus(officialStartMatch.status)
+            : false,
         );
       } catch (loadError) {
         if (!isMounted) {
@@ -404,24 +458,6 @@ function App() {
 
     const hasOfficialStartBegun =
       officialStartMs === null ? true : Date.now() >= officialStartMs;
-    const playedResults: PlayedMatchResult[] = resultsByGroup
-      .flatMap((group) => group.matches)
-      .flatMap((match) => {
-        if (
-          typeof match.homeTeam.score !== "number" ||
-          typeof match.awayTeam.score !== "number"
-        ) {
-          return [];
-        }
-
-        return [
-          {
-            matchId: match.id,
-            homeGoals: match.homeTeam.score,
-            awayGoals: match.awayTeam.score,
-          },
-        ];
-      });
 
     let lastPoints: number | null = null;
 
@@ -451,7 +487,7 @@ function App() {
     });
 
     return unsubscribe;
-  }, [officialStartMs, user, resultsByGroup]);
+  }, [officialStartMs, playedResults, user]);
 
   if (!isInstallCheckComplete) {
     return null;

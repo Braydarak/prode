@@ -195,6 +195,26 @@ export function onUserPredictionsSnapshot(params: {
   });
 }
 
+export function onAllPredictionsSnapshot(params: {
+  callback: (predictions: MatchPrediction[]) => void;
+}): Unsubscribe {
+  return onSnapshot(
+    collectionGroup(getFirebaseFirestoreInstance(), "predictions"),
+    (snapshot) => {
+      params.callback(
+        snapshot.docs
+          .map((docSnap) => docSnap.data() as MatchPrediction)
+          .sort((predictionA, predictionB) => {
+            const dateA = predictionA.scheduledTimestamp ?? "";
+            const dateB = predictionB.scheduledTimestamp ?? "";
+
+            return dateA.localeCompare(dateB);
+          }),
+      );
+    },
+  );
+}
+
 export function calculateTotalPoints(params: {
   predictions: MatchPrediction[];
   playedResults: PlayedMatchResult[];

@@ -68,20 +68,23 @@ function normalizeStatus(status: string | null | undefined): string {
   return status?.trim().toUpperCase() ?? "";
 }
 
+export function hasFinalMatchStatus(
+  status: string | null | undefined,
+): boolean {
+  const normalizedStatus = normalizeStatus(status);
+  return FINAL_MATCH_STATUSES.has(normalizedStatus);
+}
+
 function isPlayedMatch(event: SportsDbEvent): boolean {
   const homeScore = parseNullableNumber(event.intHomeScore);
   const awayScore = parseNullableNumber(event.intAwayScore);
-  const normalizedStatus = normalizeStatus(event.strStatus);
 
-  if (FINAL_MATCH_STATUSES.has(normalizedStatus)) {
-    return true;
-  }
-
-  if (!normalizedStatus) {
-    return homeScore !== null && awayScore !== null;
-  }
-
-  return false;
+  // Solo se considera jugado si la API marca el partido como finalizado.
+  return (
+    hasFinalMatchStatus(event.strStatus) &&
+    homeScore !== null &&
+    awayScore !== null
+  );
 }
 
 function isLiveMatch(event: SportsDbEvent): boolean {
@@ -148,7 +151,9 @@ export async function getWorldCup2026PlayedMatches(): Promise<
     );
 }
 
-export async function getWorldCup2026LiveMatches(): Promise<WorldCupResultMatch[]> {
+export async function getWorldCup2026LiveMatches(): Promise<
+  WorldCupResultMatch[]
+> {
   const events = await getWorldCup2026GroupStageEvents();
 
   return events

@@ -471,29 +471,27 @@ export default function Prode({ userId }: ProdeProps) {
                 </article>
               );
             })}
-            <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 md:col-span-2 xl:col-span-3">
-              <div className="flex flex-col items-stretch gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="text-sm text-zinc-700">
-                  {pendingMatchesCount === 0
-                    ? "Ya guardaste todas las predicciones disponibles."
-                    : validation.isComplete
-                      ? "Listo: completaste todos los partidos nuevos."
-                      : "Completá todos los partidos nuevos para habilitar el guardado."}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleSaveAll()}
-                  disabled={
-                    pendingMatchesCount === 0 ||
-                    !validation.isComplete ||
-                    isSavingAll
-                  }
-                  className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingAll ? "Guardando..." : "Guardar predicción"}
-                </button>
+            <div className="mt-4 text-center md:col-span-2 xl:col-span-3">
+              <div className="text-sm text-zinc-700">
+                {pendingMatchesCount === 0
+                  ? "Ya guardaste todas las predicciones disponibles."
+                  : validation.isComplete
+                    ? ""
+                    : "Completá todos los partidos nuevos para habilitar el guardado."}
               </div>
+
+              <button
+                type="button"
+                onClick={() => void handleSaveAll()}
+                disabled={
+                  pendingMatchesCount === 0 ||
+                  !validation.isComplete ||
+                  isSavingAll
+                }
+                className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingAll ? "Guardando..." : "Guardar predicción"}
+              </button>
             </div>
           </div>
         )}

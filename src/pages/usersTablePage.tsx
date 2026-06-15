@@ -45,8 +45,8 @@ export default function UsersTablePage({
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {hasOfficialStartBegun
-            ? "Los puntos ya cuentan desde el partido Argentina vs Argelia del Grupo J."
-            : `Los puntos empiezan a contar desde Argentina vs Argelia del Grupo J${
+            ? "Los puntos ya cuentan desde que finalizó el partido Argentina vs Algeria del Grupo J."
+            : `Los puntos empiezan a contar cuando finalice Argentina vs Algeria del Grupo J${
                 formattedOfficialStart ? ` (${formattedOfficialStart})` : ""
               }. Hasta entonces, la tabla se mantiene en 0 aunque ya puedan cargar predicciones.`}
         </div>
