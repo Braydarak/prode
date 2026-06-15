@@ -75,23 +75,39 @@ function App() {
   const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
 
   useEffect(() => {
-    void completeGoogleRedirectLogin().catch(() => {});
+    let unsubscribe: (() => void) | null = null;
+    let isMounted = true;
 
-    const unsubscribe = onGoogleAuthStateChanged((nextUser) => {
-      setUser(nextUser);
-      setIsAuthLoading(false);
-
-      if (!nextUser) {
-        setResultsByGroup([]);
-        setLeaderboardUsers([]);
-        setIsLoading(true);
-        setOfficialStartMs(null);
-        setHasOfficialStartBegun(true);
-        setError(null);
+    async function bootstrapAuth() {
+      try {
+        await completeGoogleRedirectLogin();
+      } catch (redirectError) {
+        void redirectError;
       }
-    });
 
-    return unsubscribe;
+      if (!isMounted) return;
+
+      unsubscribe = onGoogleAuthStateChanged((nextUser) => {
+        setUser(nextUser);
+        setIsAuthLoading(false);
+
+        if (!nextUser) {
+          setResultsByGroup([]);
+          setLeaderboardUsers([]);
+          setIsLoading(true);
+          setOfficialStartMs(null);
+          setHasOfficialStartBegun(true);
+          setError(null);
+        }
+      });
+    }
+
+    void bootstrapAuth();
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {

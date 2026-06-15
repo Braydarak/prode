@@ -4,10 +4,13 @@ import { FirebaseError } from "firebase/app";
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
+  browserPopupRedirectResolver,
+  browserSessionPersistence,
   getAuth,
   getRedirectResult,
+  initializeAuth,
+  indexedDBLocalPersistence,
   onAuthStateChanged,
-  setPersistence,
   signInWithRedirect,
   signInWithPopup,
   signOut,
@@ -86,41 +89,25 @@ export function getFirebaseAuthInstance(): Auth {
     return firebaseAuth;
   }
 
-  firebaseAuth = getAuth(getFirebaseAppInstance());
+  const app = getFirebaseAppInstance();
+  try {
+    firebaseAuth = initializeAuth(app, {
+      persistence: [
+        indexedDBLocalPersistence,
+        browserLocalPersistence,
+        browserSessionPersistence,
+      ],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    firebaseAuth = getAuth(app);
+  }
 
   return firebaseAuth;
 }
 
-function isIOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent ?? "";
-
-  const isIPhoneIPadIPod = /iPad|iPhone|iPod/.test(ua);
-  const isIPadOs13Plus =
-    !isIPhoneIPadIPod &&
-    /Macintosh/.test(ua) &&
-    typeof navigator.maxTouchPoints === "number" &&
-    navigator.maxTouchPoints > 1;
-
-  return isIPhoneIPadIPod || isIPadOs13Plus;
-}
-
-function isIOSStandalone(): boolean {
-  if (typeof window === "undefined") return false;
-  return Boolean(
-    (window.navigator as unknown as { standalone?: boolean }).standalone,
-  );
-}
-
 export async function signInWithGoogle(): Promise<void> {
   const auth = getFirebaseAuthInstance();
-
-  await setPersistence(auth, browserLocalPersistence);
-
-  if (isIOS() || isIOSStandalone()) {
-    await signInWithRedirect(auth, googleProvider);
-    return;
-  }
 
   try {
     await signInWithPopup(auth, googleProvider);
@@ -146,7 +133,6 @@ export async function signOutFromGoogle(): Promise<void> {
 
 export async function completeGoogleRedirectLogin(): Promise<void> {
   const auth = getFirebaseAuthInstance();
-  await setPersistence(auth, browserLocalPersistence);
   await getRedirectResult(auth);
 }
 
