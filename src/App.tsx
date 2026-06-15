@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import { getWorldCup2026Groups } from "./services";
 import {
   getWorldCup2026ResultsByGroup,
   type WorldCupResultsByGroup,
@@ -27,6 +28,35 @@ import {
 } from "./services/firebaseStore";
 import type { User } from "firebase/auth";
 
+const OFFICIAL_START_MATCH = {
+  group: "J",
+  homeTeam: "Argentina",
+  awayTeam: "Argelia",
+};
+
+function normalizeName(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getMatchStartMs(match: {
+  timestamp: string | null;
+  date: string | null;
+  time: string | null;
+}): number | null {
+  const iso =
+    match.timestamp ??
+    (match.date ? `${match.date}T${match.time?.trim() || "00:00:00"}Z` : null);
+
+  if (!iso) return null;
+
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function App() {
   const currentPath = window.location.pathname;
   const isMundialPage = currentPath === "/mundial";
@@ -40,6 +70,8 @@ function App() {
   const [leaderboardUsers, setLeaderboardUsers] = useState<UsersTableRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
+  const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onGoogleAuthStateChanged((nextUser) => {
@@ -50,6 +82,8 @@ function App() {
         setResultsByGroup([]);
         setLeaderboardUsers([]);
         setIsLoading(true);
+        setOfficialStartMs(null);
+        setHasOfficialStartBegun(true);
         setError(null);
       }
     });
@@ -102,13 +136,38 @@ function App() {
 
     async function loadData() {
       try {
-        const worldCupResults = await getWorldCup2026ResultsByGroup();
+        const [worldCupResults, worldCupGroups] = await Promise.all([
+          getWorldCup2026ResultsByGroup(),
+          getWorldCup2026Groups(),
+        ]);
 
         if (!isMounted) {
           return;
         }
 
+        const officialStartMatch = worldCupGroups
+          .flatMap((group) => group.matches)
+          .find(
+            (match) =>
+              normalizeName(match.group) ===
+                normalizeName(OFFICIAL_START_MATCH.group) &&
+              normalizeName(match.homeTeam.name) ===
+                normalizeName(OFFICIAL_START_MATCH.homeTeam) &&
+              normalizeName(match.awayTeam.name) ===
+                normalizeName(OFFICIAL_START_MATCH.awayTeam),
+          );
+
+        const nextOfficialStartMs = officialStartMatch
+          ? getMatchStartMs(officialStartMatch)
+          : null;
+
         setResultsByGroup(worldCupResults);
+        setOfficialStartMs(nextOfficialStartMs);
+        setHasOfficialStartBegun(
+          nextOfficialStartMs === null
+            ? true
+            : Date.now() >= nextOfficialStartMs,
+        );
       } catch (loadError) {
         if (!isMounted) {
           return;
@@ -138,6 +197,8 @@ function App() {
       return;
     }
 
+    const hasOfficialStartBegun =
+      officialStartMs === null ? true : Date.now() >= officialStartMs;
     const playedResults: PlayedMatchResult[] = resultsByGroup
       .flatMap((group) => group.matches)
       .flatMap((match) => {
@@ -162,7 +223,9 @@ function App() {
     const unsubscribe = onUserPredictionsSnapshot({
       userId: user.uid,
       callback: (predictions) => {
-        const points = calculateTotalPoints({ predictions, playedResults });
+        const points = hasOfficialStartBegun
+          ? calculateTotalPoints({ predictions, playedResults })
+          : 0;
 
         if (lastPoints === points) {
           return;
@@ -183,7 +246,7 @@ function App() {
     });
 
     return unsubscribe;
-  }, [user, resultsByGroup]);
+  }, [officialStartMs, user, resultsByGroup]);
 
   if (isAuthLoading || !user) {
     return <LoginPage />;
@@ -232,7 +295,12 @@ function App() {
         ) : isAllPredictionsPage ? (
           <AllPredictionsPage userId={user.uid} />
         ) : isUsersTablePage ? (
-          <UsersTablePage users={leaderboardUsers} currentUserId={user.uid} />
+          <UsersTablePage
+            users={leaderboardUsers}
+            currentUserId={user.uid}
+            officialStartMs={officialStartMs}
+            hasOfficialStartBegun={hasOfficialStartBegun}
+          />
         ) : (
           <>
             <section id="mis-predicciones">

@@ -72,6 +72,10 @@ export default function Prode({ userId }: ProdeProps) {
     const normalized = new Map<string, { home: number; away: number }>();
 
     for (const match of matches) {
+      if (predictionsByMatchId[match.id]) {
+        continue;
+      }
+
       const draft = drafts[match.id];
       const home = Number(draft?.homeGoals);
       const away = Number(draft?.awayGoals);
@@ -92,10 +96,10 @@ export default function Prode({ userId }: ProdeProps) {
 
     return {
       invalidMatchIds,
-      isComplete: matches.length > 0 && invalidMatchIds.length === 0,
+      isComplete: invalidMatchIds.length === 0,
       normalized,
     };
-  }, [drafts, matches]);
+  }, [drafts, matches, predictionsByMatchId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -185,11 +189,25 @@ export default function Prode({ userId }: ProdeProps) {
   }, [matches, predictionsByMatchId]);
 
   const enrichedMatches = useMemo(() => {
-    return matches.map((match) => ({
-      match,
-      date: getMatchStartDate(match),
-    }));
-  }, [matches]);
+    return matches
+      .map((match) => ({
+        match,
+        date: getMatchStartDate(match),
+        hasPrediction: Boolean(predictionsByMatchId[match.id]),
+      }))
+      .sort((a, b) => {
+        if (a.hasPrediction !== b.hasPrediction) {
+          return a.hasPrediction ? 1 : -1;
+        }
+
+        return (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0);
+      });
+  }, [matches, predictionsByMatchId]);
+
+  const pendingMatchesCount = useMemo(
+    () => matches.filter((match) => !predictionsByMatchId[match.id]).length,
+    [matches, predictionsByMatchId],
+  );
 
   async function handleSaveAll() {
     try {
@@ -207,6 +225,10 @@ export default function Prode({ userId }: ProdeProps) {
 
       await Promise.all(
         matches.map(async (match) => {
+          if (predictionsByMatchId[match.id]) {
+            return;
+          }
+
           const normalized = validation.normalized.get(match.id);
           if (!normalized) {
             return;
@@ -292,7 +314,7 @@ export default function Prode({ userId }: ProdeProps) {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {enrichedMatches.map(({ match, date }) => {
+            {enrichedMatches.map(({ match, date, hasPrediction }) => {
               const draft = drafts[match.id] ?? {
                 homeGoals: "",
                 awayGoals: "",
@@ -326,6 +348,11 @@ export default function Prode({ userId }: ProdeProps) {
                       <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium text-zinc-600">
                         {match.status ?? "Programado"}
                       </span>
+                      {!hasPrediction && (
+                        <span className="shrink-0 rounded-md bg-amber-100 px-3 py-1 text-[11px] font-medium text-amber-800">
+                          Sin predicción
+                        </span>
+                      )}
                       {saved && (
                         <span className="shrink-0 rounded-md bg-emerald-100 px-3 py-1 text-[11px] font-medium text-emerald-800">
                           Guardado
@@ -448,15 +475,21 @@ export default function Prode({ userId }: ProdeProps) {
             <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 md:col-span-2 xl:col-span-3">
               <div className="flex flex-col items-stretch gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="text-sm text-zinc-700">
-                  {validation.isComplete
-                    ? "Listo: ya completaste todos los partidos."
-                    : "Completá todos los partidos para habilitar el guardado."}
+                  {pendingMatchesCount === 0
+                    ? "Ya guardaste todas las predicciones disponibles."
+                    : validation.isComplete
+                      ? "Listo: completaste todos los partidos nuevos."
+                      : "Completá todos los partidos nuevos para habilitar el guardado."}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => void handleSaveAll()}
-                  disabled={!validation.isComplete || isSavingAll}
+                  disabled={
+                    pendingMatchesCount === 0 ||
+                    !validation.isComplete ||
+                    isSavingAll
+                  }
                   className="inline-flex h-11 items-center justify-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSavingAll ? "Guardando..." : "Guardar predicción"}
