@@ -153,11 +153,6 @@ export default function AllPredictionsPage({
           <h2 className="mt-2 text-2xl font-semibold text-zinc-950">
             Tus predicciones y resultados reales
           </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-            Se muestran tus pronósticos con el mismo estilo visual del fixture,
-            junto con el resultado real y los puntos obtenidos cuando el partido
-            ya se jugó.
-          </p>
         </div>
 
         {error && (
