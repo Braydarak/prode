@@ -328,6 +328,8 @@ function App() {
   const [shouldShowInstallPage, setShouldShowInstallPage] = useState(false);
   const [shouldShowMobileIntroPage, setShouldShowMobileIntroPage] =
     useState(false);
+  const [isRevealOverlayVisible, setIsRevealOverlayVisible] = useState(false);
+  const [isRevealOverlayOpaque, setIsRevealOverlayOpaque] = useState(false);
   const [resultsByGroup, setResultsByGroup] = useState<
     WorldCupResultsByGroup[]
   >([]);
@@ -914,13 +916,14 @@ function App() {
         onComplete={() => {
           markMobileIntroAsSeen();
           setShouldShowMobileIntroPage(false);
+          startRevealTransition();
         }}
       />
     );
   }
 
   if (isAuthLoading || !user) {
-    return <LoginPage />;
+    return renderWithReveal(<LoginPage />);
   }
 
   async function handleLogout() {
@@ -1007,7 +1010,35 @@ function App() {
     );
   }
 
-  return (
+  function startRevealTransition() {
+    setIsRevealOverlayVisible(true);
+    setIsRevealOverlayOpaque(true);
+
+    window.requestAnimationFrame(() => {
+      setIsRevealOverlayOpaque(false);
+    });
+
+    window.setTimeout(() => {
+      setIsRevealOverlayVisible(false);
+    }, 700);
+  }
+
+  function renderWithReveal(content: React.ReactNode) {
+    return (
+      <>
+        {content}
+        {isRevealOverlayVisible && (
+          <div
+            className={`pointer-events-none fixed inset-0 z-100 bg-black transition-opacity duration-700 ${
+              isRevealOverlayOpaque ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        )}
+      </>
+    );
+  }
+
+  return renderWithReveal(
     <main
       id="top"
       className="min-h-screen bg-[radial-gradient(circle_at_top,#d1fae5_0%,#f8fafc_30%,#f8fafc_100%)]"
@@ -1408,7 +1439,7 @@ function App() {
           />
         )}
       </div>
-    </main>
+    </main>,
   );
 }
 
