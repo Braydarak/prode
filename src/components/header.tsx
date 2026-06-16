@@ -9,7 +9,7 @@ type HeaderProps = {
 };
 
 const navItems = [
-  { label: "Mis predicciones", href: "/predicciones", match: "/predicciones" },
+  { label: "Tus predicciones", href: "/predicciones", match: "/predicciones" },
   { label: "Posiciones", href: "/posiciones", match: "/posiciones" },
   { label: "Partidos", href: "/#partidos", match: "/" },
   { label: "Mundial", href: "/mundial", match: "/mundial" },

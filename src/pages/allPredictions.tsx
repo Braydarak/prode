@@ -4,6 +4,7 @@ import {
   calculatePredictionPoints,
   type MatchPrediction,
 } from "../services/firebaseStore";
+import { translateCountryNameToSpanish } from "../services";
 import {
   getWorldCup2026PlayedMatches,
   type WorldCupResultMatch,
@@ -15,6 +16,10 @@ type PredictionCard = {
   result: WorldCupResultMatch | null;
   points: 0 | 1 | 2 | null;
 };
+
+function formatTeamName(value: string): string {
+  return translateCountryNameToSpanish(value) ?? value;
+}
 
 function formatPredictionDate(value: string | null): string {
   if (!value) return "Sin fecha";
@@ -216,9 +221,6 @@ export default function AllPredictionsPage({
                                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                                     Grupo {card.prediction.group ?? "-"}
                                   </p>
-                                  <p className="mt-1 truncate text-xs text-zinc-500">
-                                    Vos
-                                  </p>
                                   <p className="mt-1 text-xs text-zinc-500">
                                     {formatPredictionDate(
                                       card.prediction.scheduledTimestamp,
@@ -236,7 +238,9 @@ export default function AllPredictionsPage({
                               <div className="mt-4 grid gap-3">
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="truncate text-sm font-medium text-zinc-900">
-                                    {card.prediction.homeTeamName}
+                                    {formatTeamName(
+                                      card.prediction.homeTeamName,
+                                    )}
                                   </span>
                                   <strong className="text-base text-zinc-950">
                                     {card.prediction.predictedHomeGoals}
@@ -245,7 +249,9 @@ export default function AllPredictionsPage({
 
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="truncate text-sm font-medium text-zinc-900">
-                                    {card.prediction.awayTeamName}
+                                    {formatTeamName(
+                                      card.prediction.awayTeamName,
+                                    )}
                                   </span>
                                   <strong className="text-base text-zinc-950">
                                     {card.prediction.predictedAwayGoals}
@@ -260,7 +266,9 @@ export default function AllPredictionsPage({
                                 <div className="mt-2 grid gap-2">
                                   <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="truncate text-zinc-700">
-                                      {card.prediction.homeTeamName}
+                                      {formatTeamName(
+                                        card.prediction.homeTeamName,
+                                      )}
                                     </span>
                                     <strong className="text-zinc-950">
                                       {card.result?.homeTeam.score ?? "-"}
@@ -268,7 +276,9 @@ export default function AllPredictionsPage({
                                   </div>
                                   <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="truncate text-zinc-700">
-                                      {card.prediction.awayTeamName}
+                                      {formatTeamName(
+                                        card.prediction.awayTeamName,
+                                      )}
                                     </span>
                                     <strong className="text-zinc-950">
                                       {card.result?.awayTeam.score ?? "-"}

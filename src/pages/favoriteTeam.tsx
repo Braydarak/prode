@@ -550,7 +550,7 @@ export default function FavoriteTeamPage({
             <div className="flex flex-wrap items-end gap-3">
               <div className="relative min-w-[220px] flex-1 sm:min-w-[360px] sm:max-w-xl">
                 <label className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                  Selección
+                  Selección favorita
                 </label>
                 <input
                   value={displayedTeamQuery}
@@ -673,6 +673,7 @@ export default function FavoriteTeamPage({
                             <th className="px-4 py-3 text-left font-semibold">
                               POS
                             </th>
+                            <th className="w-6 px-1 py-3 text-center font-semibold"></th>
                             <th className="px-4 py-3 text-left font-semibold">
                               Equipo
                             </th>
@@ -704,7 +705,7 @@ export default function FavoriteTeamPage({
                                   index < 3 ? "bg-emerald-50/60" : "bg-white"
                                 }`}
                               >
-                                <td className="relative px-4 py-3">
+                                <td className="px-4 py-3">
                                   <span
                                     className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
                                       index < 3
@@ -714,11 +715,17 @@ export default function FavoriteTeamPage({
                                   >
                                     {index + 1}
                                   </span>
-                                  {isFavorite && (
-                                    <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-base text-amber-500">
-                                      ★
-                                    </span>
-                                  )}
+                                </td>
+                                <td className="w-6 px-1 py-3 text-center">
+                                  <span
+                                    className={`inline-block text-sm leading-none ${
+                                      isFavorite
+                                        ? "text-amber-500"
+                                        : "invisible"
+                                    }`}
+                                  >
+                                    ★
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-3">

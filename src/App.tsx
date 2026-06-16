@@ -10,6 +10,7 @@ import {
 } from "./services/results";
 import AllPredictionsPage from "./pages/allPredictions";
 import InstallAppPage from "./pages/installApp";
+import IntroPage from "./pages/intro";
 import LoginPage from "./pages/login";
 import FavoriteTeamPage from "./pages/favoriteTeam";
 import MundialPage from "./pages/mundial";
@@ -46,6 +47,80 @@ const OFFICIAL_START_MATCH = {
 };
 
 const FAVORITE_TEAM_STORAGE_KEY = "prode:favoriteTeamKey";
+const MOBILE_INTRO_SESSION_KEY = "prode:intro:seen";
+const COUNTRY_ABBREVIATIONS: Record<string, string> = {
+  argelia: "ALG",
+  argentina: "ARG",
+  australia: "AUS",
+  austria: "AUT",
+  belgica: "BEL",
+  bélgica: "BEL",
+  bolivia: "BOL",
+  brasil: "BRA",
+  cameron: "CMR",
+  camerún: "CMR",
+  canada: "CAN",
+  canadá: "CAN",
+  chile: "CHI",
+  colombia: "COL",
+  "costa rica": "CRC",
+  croacia: "CRO",
+  "república checa": "CZE",
+  dinamarca: "DEN",
+  ecuador: "ECU",
+  egipto: "EGY",
+  inglaterra: "ENG",
+  francia: "FRA",
+  alemania: "GER",
+  ghana: "GHA",
+  grecia: "GRE",
+  irán: "IRN",
+  iran: "IRN",
+  irak: "IRQ",
+  italia: "ITA",
+  japon: "JPN",
+  japón: "JPN",
+  "costa de marfil": "CIV",
+  mexico: "MEX",
+  méxico: "MEX",
+  marruecos: "MAR",
+  "países bajos": "NED",
+  "paises bajos": "NED",
+  "nueva zelanda": "NZL",
+  nigeria: "NGA",
+  noruega: "NOR",
+  panama: "PAN",
+  panamá: "PAN",
+  paraguay: "PAR",
+  peru: "PER",
+  perú: "PER",
+  polonia: "POL",
+  portugal: "POR",
+  catar: "QAT",
+  rumania: "ROU",
+  "arabia saudita": "KSA",
+  senegal: "SEN",
+  serbia: "SRB",
+  eslovaquia: "SVK",
+  eslovenia: "SVN",
+  sudáfrica: "RSA",
+  sudafrica: "RSA",
+  "corea del sur": "KOR",
+  espana: "ESP",
+  españa: "ESP",
+  suecia: "SWE",
+  suiza: "SUI",
+  tunez: "TUN",
+  túnez: "TUN",
+  turquia: "TUR",
+  turquía: "TUR",
+  ucrania: "UKR",
+  uruguay: "URU",
+  "estados unidos": "USA",
+  gales: "WAL",
+  escocia: "SCO",
+  jordania: "JOR",
+};
 
 type InstallPlatform = "ios" | "android" | "other";
 
@@ -75,6 +150,42 @@ function formatPlayedMatchDate(dateMs: number): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(dateMs));
+}
+
+function normalizeCountryLabel(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function getCountryAbbreviation(teamName: string): string {
+  const normalized = normalizeCountryLabel(teamName);
+  const exactMatch = COUNTRY_ABBREVIATIONS[normalized];
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const compact = normalized.replace(/[^a-z ]/g, "");
+  const compactMatch = COUNTRY_ABBREVIATIONS[compact];
+  if (compactMatch) {
+    return compactMatch;
+  }
+
+  const words = compact.split(" ").filter(Boolean);
+  if (words.length >= 2) {
+    return words
+      .slice(0, 3)
+      .map((word) => word[0] ?? "")
+      .join("")
+      .toUpperCase();
+  }
+
+  return (
+    compact.slice(0, 3).toUpperCase() || teamName.slice(0, 3).toUpperCase()
+  );
 }
 
 function formatLiveMatchTime(
@@ -174,6 +285,37 @@ function isRunningStandalone(): boolean {
   );
 }
 
+function hasSeenMobileIntroInSession(): boolean {
+  if (typeof window === "undefined") return true;
+
+  try {
+    return window.sessionStorage.getItem(MOBILE_INTRO_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markMobileIntroAsSeen(): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(MOBILE_INTRO_SESSION_KEY, "1");
+  } catch {
+    return;
+  }
+}
+
+function shouldShowMobileIntro(params: {
+  platform: InstallPlatform;
+  isStandalone: boolean;
+}): boolean {
+  return (
+    params.isStandalone &&
+    (params.platform === "ios" || params.platform === "android") &&
+    !hasSeenMobileIntroInSession()
+  );
+}
+
 function App() {
   const [currentPath, setCurrentPath] = useState(
     () => window.location.pathname,
@@ -184,6 +326,8 @@ function App() {
     useState<InstallPlatform>("other");
   const [isInstallCheckComplete, setIsInstallCheckComplete] = useState(false);
   const [shouldShowInstallPage, setShouldShowInstallPage] = useState(false);
+  const [shouldShowMobileIntroPage, setShouldShowMobileIntroPage] =
+    useState(false);
   const [resultsByGroup, setResultsByGroup] = useState<
     WorldCupResultsByGroup[]
   >([]);
@@ -192,6 +336,7 @@ function App() {
     UserLeaderboardEntry[]
   >([]);
   const [allPredictions, setAllPredictions] = useState<MatchPrediction[]>([]);
+  const [userPredictions, setUserPredictions] = useState<MatchPrediction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
@@ -249,6 +394,13 @@ function App() {
     if (recentlyPlayedMatches.length === 0) return [];
     return [...recentlyPlayedMatches, ...recentlyPlayedMatches];
   }, [isSmallScreen, recentlyPlayedMatches]);
+  const currentUserPredictionsByMatchId = useMemo(() => {
+    return new Map(
+      userPredictions.map(
+        (prediction) => [prediction.matchId, prediction] as const,
+      ),
+    );
+  }, [userPredictions]);
   const playedResults = useMemo<PlayedMatchResult[]>(() => {
     return resultsByGroup.flatMap((group) =>
       group.matches.flatMap((match) => {
@@ -491,6 +643,9 @@ function App() {
       setShouldShowInstallPage(
         !isStandalone && (platform === "ios" || platform === "android"),
       );
+      setShouldShowMobileIntroPage(
+        shouldShowMobileIntro({ platform, isStandalone }),
+      );
       setIsInstallCheckComplete(true);
     }
 
@@ -556,6 +711,7 @@ function App() {
           setLiveMatches([]);
           setLeaderboardEntries([]);
           setAllPredictions([]);
+          setUserPredictions([]);
           setIsLoading(true);
           setOfficialStartMs(null);
           setHasOfficialStartBegun(true);
@@ -698,6 +854,8 @@ function App() {
     const unsubscribe = onUserPredictionsSnapshot({
       userId: user.uid,
       callback: (predictions) => {
+        setUserPredictions(predictions);
+
         const points = hasOfficialStartBegun
           ? calculateTotalPoints({ predictions, playedResults })
           : 0;
@@ -736,12 +894,26 @@ function App() {
         platform={installPlatform}
         onRefreshInstallStatus={() => {
           const platform = getInstallPlatform();
+          const isStandalone = isRunningStandalone();
           setInstallPlatform(platform);
           setShouldShowInstallPage(
-            !isRunningStandalone() &&
-              (platform === "ios" || platform === "android"),
+            !isStandalone && (platform === "ios" || platform === "android"),
+          );
+          setShouldShowMobileIntroPage(
+            shouldShowMobileIntro({ platform, isStandalone }),
           );
           setIsInstallCheckComplete(true);
+        }}
+      />
+    );
+  }
+
+  if (shouldShowMobileIntroPage) {
+    return (
+      <IntroPage
+        onComplete={() => {
+          markMobileIntroAsSeen();
+          setShouldShowMobileIntroPage(false);
         }}
       />
     );
@@ -810,6 +982,29 @@ function App() {
           : "No se pudo guardar la selección favorita.",
       );
     });
+  }
+
+  function renderPredictionBadge(
+    matchId: string,
+    teams: {
+      homeName: string;
+      awayName: string;
+    },
+  ) {
+    const prediction = currentUserPredictionsByMatchId.get(matchId);
+
+    return (
+      <div className="mt-3 border-t border-zinc-100 pt-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Tu prediccion
+        </p>
+        <p className="mt-1 text-sm font-semibold text-zinc-900">
+          {prediction
+            ? `${getCountryAbbreviation(teams.homeName)} ${prediction.predictedHomeGoals} - ${prediction.predictedAwayGoals} ${getCountryAbbreviation(teams.awayName)}`
+            : "Sin cargar"}
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -965,6 +1160,10 @@ function App() {
                               </span>
                             </div>
                           </div>
+                          {renderPredictionBadge(match.id, {
+                            homeName: match.homeTeam.name,
+                            awayName: match.awayTeam.name,
+                          })}
                         </div>
                       </article>
                     );
@@ -1076,6 +1275,10 @@ function App() {
                                 </span>
                               </div>
                             </div>
+                            {renderPredictionBadge(match.id, {
+                              homeName: match.homeTeam.name,
+                              awayName: match.awayTeam.name,
+                            })}
                           </div>
                         </article>
                       );
@@ -1170,6 +1373,10 @@ function App() {
                                 </span>
                               </div>
                             </div>
+                            {renderPredictionBadge(match.id, {
+                              homeName: match.homeTeam.name,
+                              awayName: match.awayTeam.name,
+                            })}
                           </div>
                         </article>
                       );
