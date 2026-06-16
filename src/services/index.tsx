@@ -7,6 +7,38 @@ const WORLD_CUP_2026 = {
   groupStageRounds: [1, 2, 3] as const,
 };
 
+const COUNTRY_NAME_ES_BY_EN: Record<string, string> = {
+  algeria: "Argelia", argentina: "Argentina", australia: "Australia", austria: "Austria",
+  belgium: "Bélgica", bolivia: "Bolivia", brazil: "Brasil", cameroon: "Camerún",
+  canada: "Canadá", chile: "Chile", colombia: "Colombia", "costa rica": "Costa Rica",
+  croatia: "Croacia", czechia: "República Checa", "czech republic": "República Checa",
+  denmark: "Dinamarca", ecuador: "Ecuador", egypt: "Egipto", england: "Inglaterra",
+  france: "Francia", germany: "Alemania", ghana: "Ghana", greece: "Grecia",
+  iran: "Irán", "ir iran": "Irán", iraq: "Irak", italy: "Italia", japan: "Japón",
+  "ivory coast": "Costa de Marfil", "côte d'ivoire": "Costa de Marfil",
+  mexico: "México", morocco: "Marruecos", netherlands: "Países Bajos", "new zealand": "Nueva Zelanda",
+  nigeria: "Nigeria", norway: "Noruega", panama: "Panamá", paraguay: "Paraguay",
+  peru: "Perú", poland: "Polonia", portugal: "Portugal", qatar: "Catar",
+  romania: "Rumania", "saudi arabia": "Arabia Saudita", senegal: "Senegal", serbia: "Serbia",
+  slovakia: "Eslovaquia", slovenia: "Eslovenia", "south africa": "Sudáfrica",
+  "south korea": "Corea del Sur", "korea republic": "Corea del Sur", spain: "España",
+  sweden: "Suecia", switzerland: "Suiza", tunisia: "Túnez", turkey: "Turquía",
+  ukraine: "Ucrania", uruguay: "Uruguay", usa: "Estados Unidos", "united states": "Estados Unidos",
+  wales: "Gales", scotland: "Escocia", jordan: "Jordania"
+};
+
+function normalizeCountryLookupKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function translateCountryNameToSpanish(
+  value: string | null | undefined,
+): string | null {
+  if (!value?.trim()) return null;
+  const normalized = normalizeCountryLookupKey(value);
+  return COUNTRY_NAME_ES_BY_EN[normalized] ?? value.trim();
+}
+
 export type SportsDbEvent = {
   idEvent: string;
   idHomeTeam: string | null;
@@ -67,10 +99,33 @@ type CacheEntry<T> = {
   value: T;
 };
 
+const SPORTS_DB_STORAGE_KEY_PREFIX = "prode:sportsdb:";
+const SPORTS_DB_STALE_IF_ERROR_MS = 24 * 60 * 60 * 1000;
 const sportsDbCache = new Map<string, CacheEntry<unknown>>();
 const sportsDbInflight = new Map<string, Promise<unknown>>();
 let sportsDbQueue: Promise<void> = Promise.resolve();
 let sportsDbNextAvailableAt = 0;
+
+function readPersistedSportsDbCache<T>(cacheKey: string): CacheEntry<T> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(`${SPORTS_DB_STORAGE_KEY_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CacheEntry<T>;
+    return typeof parsed?.expiresAt === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedSportsDbCache<T>(cacheKey: string, entry: CacheEntry<T>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(`${SPORTS_DB_STORAGE_KEY_PREFIX}${cacheKey}`, JSON.stringify(entry));
+  } catch {
+    return;
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -176,10 +231,17 @@ async function fetchSportsDb<T>(
 ): Promise<T> {
   const cacheTtlMs = options?.cacheTtlMs ?? 5 * 60 * 1000;
   const cacheKey = path;
+  const now = Date.now();
   const cached = sportsDbCache.get(cacheKey);
+  const persisted = readPersistedSportsDbCache<T>(cacheKey);
 
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > now) {
     return cached.value as T;
+  }
+
+  if (persisted && persisted.expiresAt > now) {
+    sportsDbCache.set(cacheKey, persisted as CacheEntry<unknown>);
+    return persisted.value;
   }
 
   const inflight = sportsDbInflight.get(cacheKey);
@@ -188,24 +250,32 @@ async function fetchSportsDb<T>(
   }
 
   const request = (async () => {
-    const response = await fetchWithRetry(
-      `${THESPORTSDB_BASE_URL}/${path}`,
-      undefined,
-      3,
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `TheSportsDB request failed with status ${response.status}`,
+    try {
+      const response = await fetchWithRetry(
+        `${THESPORTSDB_BASE_URL}/${path}`,
+        undefined,
+        3,
       );
-    }
 
-    const data = (await response.json()) as T;
-    sportsDbCache.set(cacheKey, {
-      value: data,
-      expiresAt: Date.now() + cacheTtlMs,
-    });
-    return data;
+      if (!response.ok) {
+        throw new Error(`TheSportsDB request failed with status ${response.status}`);
+      }
+
+      const entry = {
+        value: (await response.json()) as T,
+        expiresAt: Date.now() + cacheTtlMs,
+      } satisfies CacheEntry<T>;
+
+      sportsDbCache.set(cacheKey, entry as CacheEntry<unknown>);
+      writePersistedSportsDbCache(cacheKey, entry);
+      return entry.value;
+    } catch (error) {
+      if (persisted && persisted.expiresAt + SPORTS_DB_STALE_IF_ERROR_MS > now) {
+        sportsDbCache.set(cacheKey, persisted as CacheEntry<unknown>);
+        return persisted.value;
+      }
+      throw error;
+    }
   })();
 
   sportsDbInflight.set(cacheKey, request);
@@ -303,7 +373,7 @@ function createTeam(team: {
 }): WorldCupGroupTeam {
   return {
     id: team.id,
-    name: team.name,
+    name: translateCountryNameToSpanish(team.name) ?? team.name,
     badgeUrl: team.badgeUrl,
   };
 }
@@ -405,7 +475,7 @@ export async function getWorldCup2026Groups(): Promise<WorldCupGroup[]> {
       time: event.strTime,
       timestamp: getSportsDbEventUtcTimestamp(event),
       venue: event.strVenue,
-      country: event.strCountry,
+      country: translateCountryNameToSpanish(event.strCountry),
       status: event.strStatus,
       homeTeam,
       awayTeam,
@@ -447,7 +517,7 @@ export async function getWorldCup2026KnockoutMatches(): Promise<
       time: event.strTime,
       timestamp: getSportsDbEventUtcTimestamp(event),
       venue: event.strVenue,
-      country: event.strCountry,
+      country: translateCountryNameToSpanish(event.strCountry),
       status: event.strStatus,
       homeTeam: createTeam({
         id: event.idHomeTeam,

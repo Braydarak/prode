@@ -68,6 +68,7 @@ export default function AllPredictionsPage({
 }: AllPredictionsPageProps) {
   const [predictions, setPredictions] = useState<MatchPrediction[]>([]);
   const [playedMatches, setPlayedMatches] = useState<WorldCupResultMatch[]>([]);
+  const [openRound, setOpenRound] = useState<number | null>(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -167,121 +168,144 @@ export default function AllPredictionsPage({
           <div className="space-y-8">
             {cardsByRound.map((roundData) => (
               <section key={roundData.round}>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                      Fase de grupos
-                    </p>
-                    <h3 className="mt-1 text-xl font-semibold text-zinc-950">
-                      Fecha {roundData.round}
-                    </h3>
-                  </div>
-                  <span className="rounded-md border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600">
-                    {roundData.cards.length} predicciones
-                  </span>
-                </div>
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenRound((currentRound) =>
+                        currentRound === roundData.round
+                          ? null
+                          : roundData.round,
+                      )
+                    }
+                    className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition hover:bg-zinc-50"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                        Fase de grupos
+                      </p>
+                      <h3 className="mt-1 text-xl font-semibold text-zinc-950">
+                        Fecha {roundData.round}
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-md border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600">
+                        {roundData.cards.length} predicciones
+                      </span>
+                      <span className="text-lg font-semibold text-zinc-500">
+                        {openRound === roundData.round ? "−" : "+"}
+                      </span>
+                    </div>
+                  </button>
 
-                {roundData.cards.length === 0 ? (
-                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
-                    No hay predicciones registradas para esta fecha.
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {roundData.cards.map((card) => (
-                      <article
-                        key={`${card.prediction.userId}-${card.prediction.matchId}`}
-                        className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                              Grupo {card.prediction.group ?? "-"}
-                            </p>
-                            <p className="mt-1 truncate text-xs text-zinc-500">
-                              Vos
-                            </p>
-                            <p className="mt-1 text-xs text-zinc-500">
-                              {formatPredictionDate(
-                                card.prediction.scheduledTimestamp,
-                              )}
-                            </p>
-                          </div>
-
-                          <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium text-zinc-600">
-                            {card.result ? "Resultado final" : "Pendiente"}
-                          </span>
+                  {openRound === roundData.round && (
+                    <div className="border-t border-zinc-100 px-4 py-4">
+                      {roundData.cards.length === 0 ? (
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
+                          No hay predicciones registradas para esta fecha.
                         </div>
-
-                        <div className="mt-4 grid gap-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="truncate text-sm font-medium text-zinc-900">
-                              {card.prediction.homeTeamName}
-                            </span>
-                            <strong className="text-base text-zinc-950">
-                              {card.prediction.predictedHomeGoals}
-                            </strong>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="truncate text-sm font-medium text-zinc-900">
-                              {card.prediction.awayTeamName}
-                            </span>
-                            <strong className="text-base text-zinc-950">
-                              {card.prediction.predictedAwayGoals}
-                            </strong>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 border-t border-zinc-100 pt-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                            Resultado real
-                          </p>
-                          <div className="mt-2 grid gap-2">
-                            <div className="flex items-center justify-between gap-3 text-sm">
-                              <span className="truncate text-zinc-700">
-                                {card.prediction.homeTeamName}
-                              </span>
-                              <strong className="text-zinc-950">
-                                {card.result?.homeTeam.score ?? "-"}
-                              </strong>
-                            </div>
-                            <div className="flex items-center justify-between gap-3 text-sm">
-                              <span className="truncate text-zinc-700">
-                                {card.prediction.awayTeamName}
-                              </span>
-                              <strong className="text-zinc-950">
-                                {card.result?.awayTeam.score ?? "-"}
-                              </strong>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 border-t border-zinc-100 pt-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                              Puntaje
-                            </span>
-                            <span
-                              className={`rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                                card.points === 2
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : card.points === 1
-                                    ? "bg-amber-100 text-amber-800"
-                                    : card.points === 0
-                                      ? "bg-zinc-100 text-zinc-700"
-                                      : "bg-sky-100 text-sky-800"
-                              }`}
+                      ) : (
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {roundData.cards.map((card) => (
+                            <article
+                              key={`${card.prediction.userId}-${card.prediction.matchId}`}
+                              className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
                             >
-                              {card.points === null
-                                ? "Sin jugar"
-                                : `${card.points} pts`}
-                            </span>
-                          </div>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                    Grupo {card.prediction.group ?? "-"}
+                                  </p>
+                                  <p className="mt-1 truncate text-xs text-zinc-500">
+                                    Vos
+                                  </p>
+                                  <p className="mt-1 text-xs text-zinc-500">
+                                    {formatPredictionDate(
+                                      card.prediction.scheduledTimestamp,
+                                    )}
+                                  </p>
+                                </div>
+
+                                <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium text-zinc-600">
+                                  {card.result
+                                    ? "Resultado final"
+                                    : "Pendiente"}
+                                </span>
+                              </div>
+
+                              <div className="mt-4 grid gap-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate text-sm font-medium text-zinc-900">
+                                    {card.prediction.homeTeamName}
+                                  </span>
+                                  <strong className="text-base text-zinc-950">
+                                    {card.prediction.predictedHomeGoals}
+                                  </strong>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate text-sm font-medium text-zinc-900">
+                                    {card.prediction.awayTeamName}
+                                  </span>
+                                  <strong className="text-base text-zinc-950">
+                                    {card.prediction.predictedAwayGoals}
+                                  </strong>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 border-t border-zinc-100 pt-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                                  Resultado real
+                                </p>
+                                <div className="mt-2 grid gap-2">
+                                  <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="truncate text-zinc-700">
+                                      {card.prediction.homeTeamName}
+                                    </span>
+                                    <strong className="text-zinc-950">
+                                      {card.result?.homeTeam.score ?? "-"}
+                                    </strong>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="truncate text-zinc-700">
+                                      {card.prediction.awayTeamName}
+                                    </span>
+                                    <strong className="text-zinc-950">
+                                      {card.result?.awayTeam.score ?? "-"}
+                                    </strong>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 border-t border-zinc-100 pt-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                    Puntaje
+                                  </span>
+                                  <span
+                                    className={`rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                                      card.points === 2
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : card.points === 1
+                                          ? "bg-amber-100 text-amber-800"
+                                          : card.points === 0
+                                            ? "bg-zinc-100 text-zinc-700"
+                                            : "bg-sky-100 text-sky-800"
+                                    }`}
+                                  >
+                                    {card.points === null
+                                      ? "Sin jugar"
+                                      : `${card.points} pts`}
+                                  </span>
+                                </div>
+                              </div>
+                            </article>
+                          ))}
                         </div>
-                      </article>
-                    ))}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
+                </div>
               </section>
             ))}
           </div>

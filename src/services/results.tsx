@@ -1,6 +1,7 @@
 import {
   getSportsDbEventUtcTimestamp,
   getWorldCup2026TournamentEvents,
+  translateCountryNameToSpanish,
   type SportsDbEvent,
 } from "./index";
 
@@ -120,18 +121,18 @@ function mapEventToResult(event: SportsDbEvent): WorldCupResultMatch {
     time: event.strTime,
     timestamp: getSportsDbEventUtcTimestamp(event),
     venue: event.strVenue,
-    country: event.strCountry,
+    country: translateCountryNameToSpanish(event.strCountry),
     status: event.strStatus,
     resultText: event.strResult,
     homeTeam: {
       id: event.idHomeTeam,
-      name: event.strHomeTeam,
+      name: translateCountryNameToSpanish(event.strHomeTeam) ?? event.strHomeTeam,
       badgeUrl: event.strHomeTeamBadge,
       score: homeScore,
     },
     awayTeam: {
       id: event.idAwayTeam,
-      name: event.strAwayTeam,
+      name: translateCountryNameToSpanish(event.strAwayTeam) ?? event.strAwayTeam,
       badgeUrl: event.strAwayTeamBadge,
       score: awayScore,
     },

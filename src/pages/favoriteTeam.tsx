@@ -517,16 +517,6 @@ export default function FavoriteTeamPage({
     setIsTeamPickerOpen(false);
   }
 
-  function getTeamAbbreviation(name: string): string {
-    const normalized = name.trim();
-    if (!normalized) return "";
-    const words = normalized.split(/\s+/).filter(Boolean);
-    if (words.length >= 2) {
-      return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase();
-    }
-    return words[0].slice(0, 3).toUpperCase();
-  }
-
   const displayedTeamQuery = isTeamQueryFocused
     ? teamQuery
     : (selectedTeam?.name ?? "");
@@ -598,10 +588,25 @@ export default function FavoriteTeamPage({
                     }
                   }}
                   placeholder="Escribí para buscar (ej: Argentina)"
-                  className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-900 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-200 sm:h-11"
+                  className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-white px-4 pr-14 text-sm font-semibold text-zinc-900 shadow-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-200 sm:h-11"
                   aria-label="Buscar selección favorita"
                   autoComplete="off"
                 />
+                {selectedTeam && (
+                  <div className="pointer-events-none absolute bottom-2 right-3 flex h-8 w-8 items-center justify-center sm:bottom-1.5 sm:h-9 sm:w-9">
+                    {selectedTeam.badgeUrl ? (
+                      <img
+                        src={selectedTeam.badgeUrl}
+                        alt={selectedTeam.name}
+                        className="h-7 w-7 object-contain sm:h-8 sm:w-8"
+                      />
+                    ) : (
+                      <div className="grid h-7 w-7 place-items-center rounded-md bg-zinc-100 text-[10px] font-bold text-zinc-700 sm:h-8 sm:w-8">
+                        {selectedTeam.name.slice(0, 1)}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {isTeamPickerOpen && filteredOptions.length > 0 && (
                   <div className="absolute z-30 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg">
@@ -636,37 +641,6 @@ export default function FavoriteTeamPage({
                   </div>
                 )}
               </div>
-
-              {selectedTeam && (
-                <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
-                  {selectedTeam.badgeUrl ? (
-                    <img
-                      src={selectedTeam.badgeUrl}
-                      alt={selectedTeam.name}
-                      className="h-10 w-10 rounded-full border border-amber-200 bg-white object-contain"
-                    />
-                  ) : (
-                    <div className="grid h-10 w-10 place-items-center rounded-full border border-amber-200 bg-white text-sm font-bold text-amber-900">
-                      {selectedTeam.name.slice(0, 1)}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-amber-900">
-                      <span className="hidden sm:inline">
-                        {selectedTeam.name}
-                      </span>
-                      <span className="sm:hidden">
-                        {getTeamAbbreviation(selectedTeam.name)}
-                      </span>
-                    </p>
-                    <p className="hidden text-xs text-amber-800 sm:block">
-                      {selectedGroup
-                        ? `Grupo ${selectedGroup.name}`
-                        : "Sin grupo"}
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
