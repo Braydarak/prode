@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { getWorldCup2026Groups } from "./services";
 import {
@@ -61,6 +61,15 @@ function getMatchStartMs(match: {
 
 function normalizeMatchStatus(status: string | null | undefined): string {
   return status?.trim().toUpperCase() ?? "";
+}
+
+function formatPlayedMatchDate(dateMs: number): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(dateMs));
 }
 
 function formatLiveMatchTime(
@@ -183,10 +192,46 @@ function App() {
   const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
   const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
   const [liveClockMs, setLiveClockMs] = useState(() => Date.now());
+  const [isSmallScreen, setIsSmallScreen] = useState(
+    () => window.matchMedia?.("(max-width: 767px)").matches ?? false,
+  );
+  const recentResultsScrollerRef = useRef<HTMLDivElement | null>(null);
   const isMundialPage = currentPath === "/mundial";
   const isAllPredictionsPage = currentPath === "/predicciones";
   const isUsersTablePage = currentPath === "/posiciones";
   const liveMatch = liveMatches[0] ?? null;
+  const recentlyPlayedMatches = useMemo(() => {
+    const nowMs = liveClockMs;
+    const windowStartMs = nowMs - 24 * 60 * 60 * 1000;
+
+    return resultsByGroup
+      .flatMap((group) => group.matches)
+      .filter((match) => {
+        if (!hasFinalMatchStatus(match.status)) {
+          return false;
+        }
+
+        if (
+          typeof match.homeTeam.score !== "number" ||
+          typeof match.awayTeam.score !== "number"
+        ) {
+          return false;
+        }
+
+        const matchMs = getMatchStartMs(match);
+        if (matchMs === null) {
+          return false;
+        }
+
+        return matchMs >= windowStartMs && matchMs <= nowMs;
+      })
+      .sort((a, b) => (getMatchStartMs(b) ?? 0) - (getMatchStartMs(a) ?? 0));
+  }, [liveClockMs, resultsByGroup]);
+  const mobileRecentMatches = useMemo(() => {
+    if (!isSmallScreen) return recentlyPlayedMatches;
+    if (recentlyPlayedMatches.length === 0) return [];
+    return [...recentlyPlayedMatches, ...recentlyPlayedMatches];
+  }, [isSmallScreen, recentlyPlayedMatches]);
   const playedResults = useMemo<PlayedMatchResult[]>(() => {
     return resultsByGroup.flatMap((group) =>
       group.matches.flatMap((match) => {
@@ -209,40 +254,161 @@ function App() {
     );
   }, [resultsByGroup]);
   const leaderboardUsers = useMemo<UsersTableRow[]>(() => {
-    const pointsByUserId = new Map<string, number>();
+    const statsByUserId = new Map<
+      string,
+      {
+        points: number;
+        exactHits: number;
+        outcomeHits: number;
+        misses: number;
+        predictions: number;
+      }
+    >();
 
-    if (hasOfficialStartBegun) {
-      const resultsByMatchId = new Map(
-        playedResults.map((result) => [result.matchId, result] as const),
+    if (hasOfficialStartBegun && typeof officialStartMs === "number") {
+      const matchStartMsById = new Map(
+        resultsByGroup
+          .flatMap((group) => group.matches)
+          .map((match) => [match.id, getMatchStartMs(match)] as const)
+          .filter((entry): entry is readonly [string, number] => {
+            const [, ms] = entry;
+            return typeof ms === "number" && Number.isFinite(ms);
+          }),
+      );
+      const eligibleResultsByMatchId = new Map(
+        playedResults
+          .map((result) => {
+            const startMs = matchStartMsById.get(result.matchId) ?? null;
+            return startMs !== null && startMs >= officialStartMs
+              ? ([result.matchId, result] as const)
+              : null;
+          })
+          .filter(
+            (entry): entry is readonly [string, PlayedMatchResult] =>
+              entry !== null,
+          ),
       );
 
       for (const prediction of allPredictions) {
-        const result = resultsByMatchId.get(prediction.matchId);
+        const result = eligibleResultsByMatchId.get(prediction.matchId);
         if (!result) {
           continue;
         }
 
-        const currentPoints = pointsByUserId.get(prediction.userId) ?? 0;
-        pointsByUserId.set(
-          prediction.userId,
-          currentPoints + calculatePredictionPoints(prediction, result),
-        );
+        const existing = statsByUserId.get(prediction.userId) ?? {
+          points: 0,
+          exactHits: 0,
+          outcomeHits: 0,
+          misses: 0,
+          predictions: 0,
+        };
+
+        const points = calculatePredictionPoints(prediction, result);
+        const next = {
+          ...existing,
+          points: existing.points + points,
+          predictions: existing.predictions + 1,
+          exactHits: existing.exactHits + (points === 2 ? 1 : 0),
+          outcomeHits: existing.outcomeHits + (points === 1 ? 1 : 0),
+          misses: existing.misses + (points === 0 ? 1 : 0),
+        };
+
+        statsByUserId.set(prediction.userId, next);
       }
     }
 
-    return leaderboardEntries.map((entry) => ({
-      id: entry.userId,
-      name: entry.name,
-      email: entry.email,
-      photoUrl: entry.photoUrl,
-      points: pointsByUserId.get(entry.userId) ?? 0,
-    }));
+    return leaderboardEntries.map((entry) => {
+      const stats = statsByUserId.get(entry.userId) ?? {
+        points: 0,
+        exactHits: 0,
+        outcomeHits: 0,
+        misses: 0,
+        predictions: 0,
+      };
+
+      return {
+        id: entry.userId,
+        name: entry.name,
+        photoUrl: entry.photoUrl,
+        points: stats.points,
+        predictions: stats.predictions,
+        exactHits: stats.exactHits,
+        outcomeHits: stats.outcomeHits,
+        misses: stats.misses,
+      };
+    });
   }, [
     allPredictions,
     hasOfficialStartBegun,
     leaderboardEntries,
+    officialStartMs,
     playedResults,
+    resultsByGroup,
   ]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia?.("(max-width: 767px)");
+    if (!mediaQuery) {
+      return;
+    }
+
+    const handleChange = () => {
+      setIsSmallScreen(mediaQuery.matches);
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSmallScreen) return;
+    if (mobileRecentMatches.length <= 1) return;
+
+    const container = recentResultsScrollerRef.current;
+    if (!container) return;
+
+    container.scrollLeft = 0;
+
+    let rafId = 0;
+    let lastTs = 0;
+    const speedPxPerSecond = 40;
+    const gapPx = 12;
+
+    const step = (ts: number) => {
+      if (!recentResultsScrollerRef.current) {
+        return;
+      }
+
+      if (!lastTs) {
+        lastTs = ts;
+      }
+
+      const deltaMs = ts - lastTs;
+      lastTs = ts;
+
+      const nextScrollLeft =
+        recentResultsScrollerRef.current.scrollLeft +
+        (speedPxPerSecond * deltaMs) / 1000;
+
+      const threshold =
+        recentResultsScrollerRef.current.scrollWidth / 2 - gapPx / 2;
+
+      recentResultsScrollerRef.current.scrollLeft =
+        threshold > 0 && nextScrollLeft >= threshold
+          ? nextScrollLeft - threshold
+          : nextScrollLeft;
+
+      rafId = window.requestAnimationFrame(step);
+    };
+
+    rafId = window.requestAnimationFrame(step);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isSmallScreen, mobileRecentMatches.length]);
 
   useEffect(() => {
     function refreshInstallStatus() {
@@ -335,18 +501,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!liveMatch) {
-      return;
-    }
-
     const intervalId = window.setInterval(() => {
       setLiveClockMs(Date.now());
-    }, 30000);
+    }, 60000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [liveMatch]);
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -686,6 +848,184 @@ function App() {
                       </div>
                     </article>
                   ))}
+                </div>
+              </section>
+            )}
+
+            {recentlyPlayedMatches.length > 0 && (
+              <section className="relative left-1/2 right-1/2 mx-[-50vw] mb-8 w-screen">
+                <div className="px-4 md:px-8">
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                      Resultados
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+                      Últimas 24 hs
+                    </h2>
+                  </div>
+
+                  <div
+                    ref={recentResultsScrollerRef}
+                    className="flex gap-3 overflow-x-auto pb-3 md:hidden"
+                  >
+                    {mobileRecentMatches.map((match, index) => {
+                      const matchMs = getMatchStartMs(match);
+                      const matchDate = matchMs === null ? null : matchMs;
+
+                      return (
+                        <article
+                          key={`${match.id}-${index}`}
+                          className="w-[220px] shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm"
+                        >
+                          <div className="border-b border-zinc-100 bg-zinc-50 px-3 py-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                                  Grupo {match.group}
+                                </p>
+                                <p className="mt-1 truncate text-xs font-medium text-zinc-600">
+                                  {matchDate
+                                    ? formatPlayedMatchDate(matchDate)
+                                    : (match.venue ?? "Final")}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                                Final
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="px-3 py-3">
+                            <div className="grid gap-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  {match.homeTeam.badgeUrl ? (
+                                    <img
+                                      src={match.homeTeam.badgeUrl}
+                                      alt={match.homeTeam.name}
+                                      className="h-7 w-7 object-contain"
+                                    />
+                                  ) : (
+                                    <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-700">
+                                      {match.homeTeam.name.slice(0, 1)}
+                                    </div>
+                                  )}
+                                  <p className="truncate text-sm font-semibold text-zinc-950">
+                                    {match.homeTeam.name}
+                                  </p>
+                                </div>
+                                <span className="text-xl font-bold text-zinc-950">
+                                  {match.homeTeam.score}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  {match.awayTeam.badgeUrl ? (
+                                    <img
+                                      src={match.awayTeam.badgeUrl}
+                                      alt={match.awayTeam.name}
+                                      className="h-7 w-7 object-contain"
+                                    />
+                                  ) : (
+                                    <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-700">
+                                      {match.awayTeam.name.slice(0, 1)}
+                                    </div>
+                                  )}
+                                  <p className="truncate text-sm font-semibold text-zinc-950">
+                                    {match.awayTeam.name}
+                                  </p>
+                                </div>
+                                <span className="text-xl font-bold text-zinc-950">
+                                  {match.awayTeam.score}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden md:flex md:gap-4">
+                    {recentlyPlayedMatches.slice(0, 4).map((match) => {
+                      const matchMs = getMatchStartMs(match);
+                      const matchDate = matchMs === null ? null : matchMs;
+
+                      return (
+                        <article
+                          key={match.id}
+                          className="w-[calc((100%-3rem)/4)] shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm"
+                        >
+                          <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                                  Grupo {match.group}
+                                </p>
+                                <p className="mt-1 truncate text-sm font-medium text-zinc-600">
+                                  {matchDate
+                                    ? formatPlayedMatchDate(matchDate)
+                                    : (match.venue ?? "Final")}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                                Final
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="px-4 py-4">
+                            <div className="grid gap-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                  {match.homeTeam.badgeUrl ? (
+                                    <img
+                                      src={match.homeTeam.badgeUrl}
+                                      alt={match.homeTeam.name}
+                                      className="h-9 w-9 object-contain"
+                                    />
+                                  ) : (
+                                    <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                      {match.homeTeam.name.slice(0, 1)}
+                                    </div>
+                                  )}
+                                  <p className="truncate text-base font-semibold text-zinc-950">
+                                    {match.homeTeam.name}
+                                  </p>
+                                </div>
+                                <span className="text-2xl font-bold text-zinc-950">
+                                  {match.homeTeam.score}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                  {match.awayTeam.badgeUrl ? (
+                                    <img
+                                      src={match.awayTeam.badgeUrl}
+                                      alt={match.awayTeam.name}
+                                      className="h-9 w-9 object-contain"
+                                    />
+                                  ) : (
+                                    <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                      {match.awayTeam.name.slice(0, 1)}
+                                    </div>
+                                  )}
+                                  <p className="truncate text-base font-semibold text-zinc-950">
+                                    {match.awayTeam.name}
+                                  </p>
+                                </div>
+                                <span className="text-2xl font-bold text-zinc-950">
+                                  {match.awayTeam.score}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
                 </div>
               </section>
             )}

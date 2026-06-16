@@ -78,11 +78,19 @@ export default function Prode({ userId }: ProdeProps) {
       }
 
       const draft = drafts[match.id];
-      const home = Number(draft?.homeGoals);
-      const away = Number(draft?.awayGoals);
+      const rawHome = draft?.homeGoals ?? "";
+      const rawAway = draft?.awayGoals ?? "";
+      const homeText = rawHome.trim();
+      const awayText = rawAway.trim();
+
+      if (!homeText && !awayText) {
+        continue;
+      }
+
+      const home = Number(homeText);
+      const away = Number(awayText);
 
       if (
-        !draft ||
         !Number.isInteger(home) ||
         home < 0 ||
         !Number.isInteger(away) ||
@@ -99,6 +107,7 @@ export default function Prode({ userId }: ProdeProps) {
       invalidMatchIds,
       isComplete: invalidMatchIds.length === 0,
       normalized,
+      hasSavable: normalized.size > 0,
     };
   }, [drafts, matches, predictionsByMatchId]);
 
@@ -207,9 +216,12 @@ export default function Prode({ userId }: ProdeProps) {
       setShowValidation(true);
 
       if (!validation.isComplete) {
-        setError(
-          "Completá todos los partidos con goles válidos (enteros >= 0).",
-        );
+        setError("Completá los goles del/los partido(s) incompleto(s).");
+        return;
+      }
+
+      if (!validation.hasSavable) {
+        setError("Completá al menos un partido para guardar.");
         return;
       }
 
@@ -325,9 +337,9 @@ export default function Prode({ userId }: ProdeProps) {
                   Cuando aparezcan nuevos cruces, los vas a ver aca para
                   completar tus pronosticos.
                 </p>
-                <div className="mt-5 inline-flex rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-xs font-medium text-emerald-800">
-                  Volve mas tarde para seguir jugando
-                </div>
+                <p className="mt-5 text-sm font-medium text-emerald-800">
+                  Volvé más tarde para seguir jugando
+                </p>
               </div>
             </div>
           </div>
@@ -475,9 +487,11 @@ export default function Prode({ userId }: ProdeProps) {
               <div className="text-sm text-zinc-700">
                 {pendingMatchesCount === 0
                   ? "Ya guardaste todas las predicciones disponibles."
-                  : validation.isComplete
-                    ? ""
-                    : "Completá todos los partidos nuevos para habilitar el guardado."}
+                  : !validation.isComplete
+                    ? "Completá los goles del/los partido(s) incompleto(s) para habilitar el guardado."
+                    : !validation.hasSavable
+                      ? "Completá al menos un partido para habilitar el guardado."
+                      : ""}
               </div>
 
               <button
@@ -486,6 +500,7 @@ export default function Prode({ userId }: ProdeProps) {
                 disabled={
                   pendingMatchesCount === 0 ||
                   !validation.isComplete ||
+                  !validation.hasSavable ||
                   isSavingAll
                 }
                 className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"

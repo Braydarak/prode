@@ -4,7 +4,10 @@ export type UsersTableRow = {
   id: string;
   name: string;
   points: number;
-  email?: string | null;
+  predictions: number;
+  exactHits: number;
+  outcomeHits: number;
+  misses: number;
   photoUrl?: string | null;
 };
 
@@ -29,6 +32,8 @@ export default function UsersTable({
   const rows = useMemo(() => {
     return [...users].sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
+      if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
+      if (b.outcomeHits !== a.outcomeHits) return b.outcomeHits - a.outcomeHits;
       return (a.name || "").localeCompare(b.name || "");
     });
   }, [users]);
@@ -54,7 +59,16 @@ export default function UsersTable({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200">
+            <table className="min-w-full table-fixed divide-y divide-zinc-200">
+              <colgroup>
+                <col className="w-16" />
+                <col />
+                <col className="w-16" />
+                <col className="w-16" />
+                <col className="w-16" />
+                <col className="w-16" />
+                <col className="w-16" />
+              </colgroup>
               <thead className="bg-zinc-50">
                 <tr>
                   <th
@@ -71,16 +85,39 @@ export default function UsersTable({
                   </th>
                   <th
                     scope="col"
-                    className="w-28 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-zinc-600"
+                    className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600"
                   >
-                    Puntos
+                    PTS
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600"
+                  >
+                    PRO
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600"
+                  >
+                    EXC
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600"
+                  >
+                    RES
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600"
+                  >
+                    SA
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {rows.map((user, index) => {
-                  const displayName =
-                    user.name?.trim() || user.email || "Usuario";
+                  const displayName = user.name?.trim() || "Usuario";
                   const initials = getInitials(displayName);
                   const isCurrent = currentUserId
                     ? user.id === currentUserId
@@ -121,22 +158,33 @@ export default function UsersTable({
                             <p className="truncate text-sm font-medium text-zinc-900">
                               {displayName}
                             </p>
-                            {user.email && (
-                              <p className="truncate text-xs text-zinc-500">
-                                {user.email}
-                              </p>
-                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-zinc-900">
+                      <td className="whitespace-nowrap px-4 py-3 text-center text-sm font-semibold text-zinc-900">
                         {user.points}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-center text-sm font-semibold text-zinc-900">
+                        {user.predictions}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-center text-sm font-semibold text-zinc-900">
+                        {user.exactHits}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-center text-sm font-semibold text-zinc-900">
+                        {user.outcomeHits}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-center text-sm font-semibold text-zinc-900">
+                        {user.misses}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-600">
+              PTS: puntos · PRO: pronósticos · EXC: exactos · RES: resultado · SA:
+              sin acierto
+            </div>
           </div>
         )}
       </div>
