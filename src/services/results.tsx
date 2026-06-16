@@ -1,6 +1,6 @@
 import {
   getSportsDbEventUtcTimestamp,
-  getWorldCup2026GroupStageEvents,
+  getWorldCup2026TournamentEvents,
   type SportsDbEvent,
 } from "./index";
 
@@ -141,7 +141,7 @@ function mapEventToResult(event: SportsDbEvent): WorldCupResultMatch {
 export async function getWorldCup2026PlayedMatches(): Promise<
   WorldCupResultMatch[]
 > {
-  const events = await getWorldCup2026GroupStageEvents();
+  const events = await getWorldCup2026TournamentEvents();
 
   return events
     .filter(isPlayedMatch)
@@ -154,7 +154,7 @@ export async function getWorldCup2026PlayedMatches(): Promise<
 export async function getWorldCup2026LiveMatches(): Promise<
   WorldCupResultMatch[]
 > {
-  const events = await getWorldCup2026GroupStageEvents();
+  const events = await getWorldCup2026TournamentEvents();
 
   return events
     .filter(isLiveMatch)

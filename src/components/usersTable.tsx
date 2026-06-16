@@ -75,7 +75,7 @@ export default function UsersTable({
                     scope="col"
                     className="w-16 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-600"
                   >
-                    #
+                    POS
                   </th>
                   <th
                     scope="col"

@@ -11,6 +11,7 @@ import {
 import AllPredictionsPage from "./pages/allPredictions";
 import InstallAppPage from "./pages/installApp";
 import LoginPage from "./pages/login";
+import FavoriteTeamPage from "./pages/favoriteTeam";
 import MundialPage from "./pages/mundial";
 import UsersTablePage from "./pages/usersTablePage";
 import UsersTable, { type UsersTableRow } from "./components/usersTable";
@@ -28,7 +29,9 @@ import {
   calculatePredictionPoints,
   onAllPredictionsSnapshot,
   onLeaderboardSnapshot,
+  onUserProfileSnapshot,
   onUserPredictionsSnapshot,
+  setUserFavoriteTeamKey,
   setUserLeaderboardPoints,
   type MatchPrediction,
   upsertUserLeaderboardProfile,
@@ -41,6 +44,8 @@ const OFFICIAL_START_MATCH = {
   id: "2391740",
   label: "Argentina vs Algeria",
 };
+
+const FAVORITE_TEAM_STORAGE_KEY = "prode:favoriteTeamKey";
 
 type InstallPlatform = "ios" | "android" | "other";
 
@@ -195,7 +200,19 @@ function App() {
   const [isSmallScreen, setIsSmallScreen] = useState(
     () => window.matchMedia?.("(max-width: 767px)").matches ?? false,
   );
+  const [favoriteTeamKey, setFavoriteTeamKey] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(FAVORITE_TEAM_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const favoriteTeamKeyFromFirebaseRef = useRef<string | null | undefined>(
+    undefined,
+  );
   const recentResultsScrollerRef = useRef<HTMLDivElement | null>(null);
+  const isFavoriteTeamPage = currentPath === "/seleccion-favorita";
   const isMundialPage = currentPath === "/mundial";
   const isAllPredictionsPage = currentPath === "/predicciones";
   const isUsersTablePage = currentPath === "/posiciones";
@@ -253,6 +270,61 @@ function App() {
       }),
     );
   }, [resultsByGroup]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (favoriteTeamKey) {
+        window.localStorage.setItem(FAVORITE_TEAM_STORAGE_KEY, favoriteTeamKey);
+      } else {
+        window.localStorage.removeItem(FAVORITE_TEAM_STORAGE_KEY);
+      }
+    } catch {
+      return;
+    }
+  }, [favoriteTeamKey]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    return onUserProfileSnapshot({
+      userId: user.uid,
+      callback: (profile) => {
+        if (!profile) {
+          favoriteTeamKeyFromFirebaseRef.current = null;
+          return;
+        }
+
+        const profileAny = profile as unknown as Record<string, unknown>;
+        const hasFavoriteTeamKey = Object.prototype.hasOwnProperty.call(
+          profileAny,
+          "favoriteTeamKey",
+        );
+
+        if (!hasFavoriteTeamKey) {
+          if (favoriteTeamKey) {
+            favoriteTeamKeyFromFirebaseRef.current = favoriteTeamKey;
+            void setUserFavoriteTeamKey({
+              userId: user.uid,
+              favoriteTeamKey,
+            }).catch(() => null);
+          }
+          return;
+        }
+
+        const firebaseFavorite =
+          typeof profile.favoriteTeamKey === "string"
+            ? profile.favoriteTeamKey
+            : null;
+        favoriteTeamKeyFromFirebaseRef.current = firebaseFavorite;
+        setFavoriteTeamKey((current) =>
+          current === firebaseFavorite ? current : firebaseFavorite,
+        );
+      },
+    });
+  }, [favoriteTeamKey, user]);
   const leaderboardUsers = useMemo<UsersTableRow[]>(() => {
     const statsByUserId = new Map<
       string,
@@ -715,6 +787,31 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function handleFavoriteTeamChange(nextKey: string | null) {
+    setFavoriteTeamKey(nextKey);
+
+    if (!user) {
+      return;
+    }
+
+    if (favoriteTeamKeyFromFirebaseRef.current === nextKey) {
+      return;
+    }
+
+    favoriteTeamKeyFromFirebaseRef.current = nextKey;
+
+    void setUserFavoriteTeamKey({
+      userId: user.uid,
+      favoriteTeamKey: nextKey,
+    }).catch((writeError) => {
+      setError(
+        writeError instanceof Error
+          ? writeError.message
+          : "No se pudo guardar la selección favorita.",
+      );
+    });
+  }
+
   return (
     <main
       id="top"
@@ -724,13 +821,15 @@ function App() {
         onLogout={() => void handleLogout()}
         onNavigate={handleNavigate}
         currentPath={
-          isMundialPage
-            ? "/mundial"
-            : isAllPredictionsPage
-              ? "/predicciones"
-              : isUsersTablePage
-                ? "/posiciones"
-                : "/"
+          isFavoriteTeamPage
+            ? "/seleccion-favorita"
+            : isMundialPage
+              ? "/mundial"
+              : isAllPredictionsPage
+                ? "/predicciones"
+                : isUsersTablePage
+                  ? "/posiciones"
+                  : "/"
         }
       />
 
@@ -741,8 +840,13 @@ function App() {
           </div>
         )}
 
-        {isMundialPage ? (
-          <MundialPage />
+        {isFavoriteTeamPage ? (
+          <FavoriteTeamPage
+            favoriteTeamKey={favoriteTeamKey}
+            onFavoriteTeamChange={handleFavoriteTeamChange}
+          />
+        ) : isMundialPage ? (
+          <MundialPage favoriteTeamKey={favoriteTeamKey} />
         ) : isAllPredictionsPage ? (
           <AllPredictionsPage userId={user.uid} />
         ) : isUsersTablePage ? (
@@ -774,80 +878,97 @@ function App() {
                       : "block"
                   }`}
                 >
-                  {liveMatches.map((match) => (
-                    <article
-                      key={match.id}
-                      className={`overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm ${
-                        liveMatches.length > 1
-                          ? "min-w-[280px] max-w-[320px] shrink-0 snap-start"
-                          : ""
-                      }`}
-                    >
-                      <div className="border-b border-emerald-100 bg-linear-to-r from-emerald-50 to-white px-4 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                              Grupo {match.group}
-                            </p>
-                            <p className="mt-1 truncate text-sm font-medium text-zinc-600">
-                              {match.venue ?? "Sede a confirmar"}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
-                            {formatLiveMatchTime(match, liveClockMs)}
-                          </span>
-                        </div>
-                      </div>
+                  {liveMatches.map((match) => {
+                    const isFavoriteHome =
+                      favoriteTeamKey !== null &&
+                      (match.homeTeam.id ?? match.homeTeam.name) ===
+                        favoriteTeamKey;
+                    const isFavoriteAway =
+                      favoriteTeamKey !== null &&
+                      (match.awayTeam.id ?? match.awayTeam.name) ===
+                        favoriteTeamKey;
 
-                      <div className="px-4 py-4">
-                        <div className="grid gap-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex min-w-0 items-center gap-3">
-                              {match.homeTeam.badgeUrl ? (
-                                <img
-                                  src={match.homeTeam.badgeUrl}
-                                  alt={match.homeTeam.name}
-                                  className="h-9 w-9 object-contain"
-                                />
-                              ) : (
-                                <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
-                                  {match.homeTeam.name.slice(0, 1)}
-                                </div>
-                              )}
-                              <p className="truncate text-base font-semibold text-zinc-950">
-                                {match.homeTeam.name}
+                    return (
+                      <article
+                        key={match.id}
+                        className={`overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm ${
+                          liveMatches.length > 1
+                            ? "min-w-[280px] max-w-[320px] shrink-0 snap-start"
+                            : ""
+                        }`}
+                      >
+                        <div className="border-b border-emerald-100 bg-linear-to-r from-emerald-50 to-white px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                                Grupo {match.group}
+                              </p>
+                              <p className="mt-1 truncate text-sm font-medium text-zinc-600">
+                                {match.venue ?? "Sede a confirmar"}
                               </p>
                             </div>
-                            <span className="text-2xl font-bold text-zinc-950">
-                              {match.homeTeam.score ?? 0}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex min-w-0 items-center gap-3">
-                              {match.awayTeam.badgeUrl ? (
-                                <img
-                                  src={match.awayTeam.badgeUrl}
-                                  alt={match.awayTeam.name}
-                                  className="h-9 w-9 object-contain"
-                                />
-                              ) : (
-                                <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
-                                  {match.awayTeam.name.slice(0, 1)}
-                                </div>
-                              )}
-                              <p className="truncate text-base font-semibold text-zinc-950">
-                                {match.awayTeam.name}
-                              </p>
-                            </div>
-                            <span className="text-2xl font-bold text-zinc-950">
-                              {match.awayTeam.score ?? 0}
+                            <span className="shrink-0 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
+                              {formatLiveMatchTime(match, liveClockMs)}
                             </span>
                           </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+
+                        <div className="px-4 py-4">
+                          <div className="grid gap-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-3">
+                                {match.homeTeam.badgeUrl ? (
+                                  <img
+                                    src={match.homeTeam.badgeUrl}
+                                    alt={match.homeTeam.name}
+                                    className="h-9 w-9 object-contain"
+                                  />
+                                ) : (
+                                  <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                    {match.homeTeam.name.slice(0, 1)}
+                                  </div>
+                                )}
+                                <p className="truncate text-base font-semibold text-zinc-950">
+                                  {match.homeTeam.name}
+                                  {isFavoriteHome && (
+                                    <span className="text-amber-500"> ★</span>
+                                  )}
+                                </p>
+                              </div>
+                              <span className="text-2xl font-bold text-zinc-950">
+                                {match.homeTeam.score ?? 0}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-3">
+                                {match.awayTeam.badgeUrl ? (
+                                  <img
+                                    src={match.awayTeam.badgeUrl}
+                                    alt={match.awayTeam.name}
+                                    className="h-9 w-9 object-contain"
+                                  />
+                                ) : (
+                                  <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                    {match.awayTeam.name.slice(0, 1)}
+                                  </div>
+                                )}
+                                <p className="truncate text-base font-semibold text-zinc-950">
+                                  {match.awayTeam.name}
+                                  {isFavoriteAway && (
+                                    <span className="text-amber-500"> ★</span>
+                                  )}
+                                </p>
+                              </div>
+                              <span className="text-2xl font-bold text-zinc-950">
+                                {match.awayTeam.score ?? 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -871,6 +992,14 @@ function App() {
                     {mobileRecentMatches.map((match, index) => {
                       const matchMs = getMatchStartMs(match);
                       const matchDate = matchMs === null ? null : matchMs;
+                      const isFavoriteHome =
+                        favoriteTeamKey !== null &&
+                        (match.homeTeam.id ?? match.homeTeam.name) ===
+                          favoriteTeamKey;
+                      const isFavoriteAway =
+                        favoriteTeamKey !== null &&
+                        (match.awayTeam.id ?? match.awayTeam.name) ===
+                          favoriteTeamKey;
 
                       return (
                         <article
@@ -912,6 +1041,9 @@ function App() {
                                   )}
                                   <p className="truncate text-sm font-semibold text-zinc-950">
                                     {match.homeTeam.name}
+                                    {isFavoriteHome && (
+                                      <span className="text-amber-500"> ★</span>
+                                    )}
                                   </p>
                                 </div>
                                 <span className="text-xl font-bold text-zinc-950">
@@ -934,6 +1066,9 @@ function App() {
                                   )}
                                   <p className="truncate text-sm font-semibold text-zinc-950">
                                     {match.awayTeam.name}
+                                    {isFavoriteAway && (
+                                      <span className="text-amber-500"> ★</span>
+                                    )}
                                   </p>
                                 </div>
                                 <span className="text-xl font-bold text-zinc-950">
@@ -951,6 +1086,14 @@ function App() {
                     {recentlyPlayedMatches.slice(0, 4).map((match) => {
                       const matchMs = getMatchStartMs(match);
                       const matchDate = matchMs === null ? null : matchMs;
+                      const isFavoriteHome =
+                        favoriteTeamKey !== null &&
+                        (match.homeTeam.id ?? match.homeTeam.name) ===
+                          favoriteTeamKey;
+                      const isFavoriteAway =
+                        favoriteTeamKey !== null &&
+                        (match.awayTeam.id ?? match.awayTeam.name) ===
+                          favoriteTeamKey;
 
                       return (
                         <article
@@ -992,6 +1135,9 @@ function App() {
                                   )}
                                   <p className="truncate text-base font-semibold text-zinc-950">
                                     {match.homeTeam.name}
+                                    {isFavoriteHome && (
+                                      <span className="text-amber-500"> ★</span>
+                                    )}
                                   </p>
                                 </div>
                                 <span className="text-2xl font-bold text-zinc-950">
@@ -1014,6 +1160,9 @@ function App() {
                                   )}
                                   <p className="truncate text-base font-semibold text-zinc-950">
                                     {match.awayTeam.name}
+                                    {isFavoriteAway && (
+                                      <span className="text-amber-500"> ★</span>
+                                    )}
                                   </p>
                                 </div>
                                 <span className="text-2xl font-bold text-zinc-950">

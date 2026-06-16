@@ -3,6 +3,7 @@ const THESPORTSDB_BASE_URL = "https://www.thesportsdb.com/api/v1/json/123";
 const WORLD_CUP_2026 = {
   leagueId: "4429",
   season: "2026",
+  rounds: [1, 2, 3, 4, 5, 6, 7, 8, 9] as const,
   groupStageRounds: [1, 2, 3] as const,
 };
 
@@ -55,6 +56,10 @@ export type WorldCupGroup = {
   name: string;
   teams: WorldCupGroupTeam[];
   matches: WorldCupGroupMatch[];
+};
+
+export type WorldCupKnockoutMatch = Omit<WorldCupGroupMatch, "group"> & {
+  stage: string;
 };
 
 type CacheEntry<T> = {
@@ -320,8 +325,45 @@ export async function getWorldCup2026GroupStageEvents(): Promise<
   return events;
 }
 
+export async function getWorldCup2026TournamentEvents(): Promise<
+  SportsDbEvent[]
+> {
+  const events: SportsDbEvent[] = [];
+
+  for (const round of WORLD_CUP_2026.rounds) {
+    const roundEvents = await getEventsByRound(round);
+    events.push(...roundEvents);
+  }
+
+  const uniqueEvents = new Map<string, SportsDbEvent>();
+  for (const event of events) {
+    uniqueEvents.set(event.idEvent, event);
+  }
+
+  return Array.from(uniqueEvents.values());
+}
+
+function getKnockoutStageLabel(round: number | null): string {
+  switch (round) {
+    case 4:
+      return "Dieciseisavos";
+    case 5:
+      return "Octavos";
+    case 6:
+      return "Cuartos";
+    case 7:
+      return "Semifinales";
+    case 8:
+      return "Tercer puesto";
+    case 9:
+      return "Final";
+    default:
+      return round ? `Ronda ${round}` : "Eliminatorias";
+  }
+}
+
 export async function getWorldCup2026Groups(): Promise<WorldCupGroup[]> {
-  const events = await getWorldCup2026GroupStageEvents();
+  const events = await getWorldCup2026TournamentEvents();
 
   const groupsMap = new Map<
     string,
@@ -385,4 +427,42 @@ export async function getWorldCup2026Groups(): Promise<WorldCupGroup[]> {
         );
       }),
     }));
+}
+
+export async function getWorldCup2026KnockoutMatches(): Promise<
+  WorldCupKnockoutMatch[]
+> {
+  const events = await getWorldCup2026TournamentEvents();
+
+  return events
+    .filter((event) => {
+      const round = parseNullableNumber(event.intRound);
+      return !event.strGroup && round !== null && round > 3;
+    })
+    .map((event) => ({
+      id: event.idEvent,
+      stage: getKnockoutStageLabel(parseNullableNumber(event.intRound)),
+      round: parseNullableNumber(event.intRound),
+      date: event.dateEvent,
+      time: event.strTime,
+      timestamp: getSportsDbEventUtcTimestamp(event),
+      venue: event.strVenue,
+      country: event.strCountry,
+      status: event.strStatus,
+      homeTeam: createTeam({
+        id: event.idHomeTeam,
+        name: event.strHomeTeam,
+        badgeUrl: event.strHomeTeamBadge,
+      }),
+      awayTeam: createTeam({
+        id: event.idAwayTeam,
+        name: event.strAwayTeam,
+        badgeUrl: event.strAwayTeamBadge,
+      }),
+    }))
+    .sort((matchA, matchB) =>
+      getMatchSortableTimestamp(matchA).localeCompare(
+        getMatchSortableTimestamp(matchB),
+      ),
+    );
 }

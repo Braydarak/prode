@@ -13,6 +13,11 @@ const navItems = [
   { label: "Posiciones", href: "/posiciones", match: "/posiciones" },
   { label: "Partidos", href: "/#partidos", match: "/" },
   { label: "Mundial", href: "/mundial", match: "/mundial" },
+  {
+    label: "Selección favorita",
+    href: "/seleccion-favorita",
+    match: "/seleccion-favorita",
+  },
 ] as const;
 
 export default function Header({
@@ -143,7 +148,7 @@ export default function Header({
                   : "translate-x-full opacity-0"
               }`}
             >
-              <nav className="flex min-h-[calc(100dvh-5rem)] flex-col justify-center gap-3 px-5 py-8">
+              <nav className="flex min-h-[calc(100dvh-5rem)] flex-col justify-center gap-4 px-5 py-8">
                 {navItems.map((item, index) => (
                   <button
                     key={item.label}

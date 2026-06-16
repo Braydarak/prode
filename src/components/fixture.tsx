@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getWorldCup2026Groups,
+  getWorldCup2026KnockoutMatches,
   type WorldCupGroup,
   type WorldCupGroupMatch,
+  type WorldCupKnockoutMatch,
   type WorldCupGroupTeam,
 } from "../services";
 import {
@@ -11,6 +13,7 @@ import {
   type WorldCupResultMatch,
 } from "../services/results";
 import Loader from "./loader";
+import Bracket from "./bracket";
 
 type TeamStanding = {
   team: WorldCupGroupTeam;
@@ -27,6 +30,10 @@ type TeamStanding = {
 type GroupStanding = {
   groupName: string;
   standings: TeamStanding[];
+};
+
+type FixtureProps = {
+  favoriteTeamKey?: string | null;
 };
 
 const LIVE_MATCH_STATUSES = new Set([
@@ -131,7 +138,9 @@ function formatLiveMatchState(
   }
 }
 
-function formatMatchDate(match: WorldCupGroupMatch): string {
+function formatMatchDate(
+  match: Pick<WorldCupGroupMatch, "timestamp" | "date" | "time">,
+): string {
   const rawTimestamp = match.timestamp?.trim() ?? "";
   const raw =
     rawTimestamp ||
@@ -248,8 +257,11 @@ function getTeamKey(team: Pick<WorldCupGroupTeam, "id" | "name">): string {
   return team.id ?? team.name;
 }
 
-export default function Fixture() {
+export default function Fixture({ favoriteTeamKey = null }: FixtureProps) {
   const [groups, setGroups] = useState<WorldCupGroup[]>([]);
+  const [knockoutMatches, setKnockoutMatches] = useState<
+    WorldCupKnockoutMatch[]
+  >([]);
   const [playedMatches, setPlayedMatches] = useState<WorldCupResultMatch[]>([]);
   const [liveMatches, setLiveMatches] = useState<WorldCupResultMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -264,18 +276,24 @@ export default function Fixture() {
         setIsLoading(true);
         setError(null);
 
-        const [nextGroups, nextPlayedMatches, nextLiveMatches] =
-          await Promise.all([
-            getWorldCup2026Groups(),
-            getWorldCup2026PlayedMatches(),
-            getWorldCup2026LiveMatches(),
-          ]);
+        const [
+          nextGroups,
+          nextKnockoutMatches,
+          nextPlayedMatches,
+          nextLiveMatches,
+        ] = await Promise.all([
+          getWorldCup2026Groups(),
+          getWorldCup2026KnockoutMatches(),
+          getWorldCup2026PlayedMatches(),
+          getWorldCup2026LiveMatches(),
+        ]);
 
         if (!isMounted) {
           return;
         }
 
         setGroups(nextGroups);
+        setKnockoutMatches(nextKnockoutMatches);
         setPlayedMatches(nextPlayedMatches);
         setLiveMatches(nextLiveMatches);
       } catch (loadError) {
@@ -394,7 +412,9 @@ export default function Fixture() {
                   <table className="min-w-full text-sm">
                     <thead className="bg-white text-zinc-500">
                       <tr className="border-b border-zinc-100">
-                        <th className="px-4 py-3 text-left font-semibold">#</th>
+                        <th className="px-4 py-3 text-left font-semibold">
+                          POS
+                        </th>
                         <th className="px-4 py-3 text-left font-semibold">
                           Equipo
                         </th>
@@ -420,6 +440,9 @@ export default function Fixture() {
                         const liveScore = liveScoreByTeamKey.get(
                           getTeamKey(row.team),
                         );
+                        const isFavorite =
+                          favoriteTeamKey !== null &&
+                          getTeamKey(row.team) === favoriteTeamKey;
 
                         return (
                           <tr
@@ -428,7 +451,7 @@ export default function Fixture() {
                               index < 3 ? "bg-emerald-50/60" : "bg-white"
                             }`}
                           >
-                            <td className="px-4 py-3">
+                            <td className="relative px-4 py-3">
                               <span
                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
                                   index < 3
@@ -438,6 +461,11 @@ export default function Fixture() {
                               >
                                 {index + 1}
                               </span>
+                              {isFavorite && (
+                                <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-base text-amber-500">
+                                  ★
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
@@ -536,6 +564,12 @@ export default function Fixture() {
                             const isLive = isLiveMatchStatus(
                               live?.status ?? match.status,
                             );
+                            const isFavoriteHome =
+                              favoriteTeamKey !== null &&
+                              getTeamKey(match.homeTeam) === favoriteTeamKey;
+                            const isFavoriteAway =
+                              favoriteTeamKey !== null &&
+                              getTeamKey(match.awayTeam) === favoriteTeamKey;
 
                             return (
                               <article
@@ -578,8 +612,20 @@ export default function Fixture() {
                                           {match.homeTeam.name.slice(0, 1)}
                                         </div>
                                       )}
-                                      <span className="truncate text-sm font-medium text-zinc-900">
+                                      <span
+                                        className={`truncate text-sm font-medium ${
+                                          isFavoriteHome
+                                            ? "text-amber-800"
+                                            : "text-zinc-900"
+                                        }`}
+                                      >
                                         {match.homeTeam.name}
+                                        {isFavoriteHome && (
+                                          <span className="text-amber-500">
+                                            {" "}
+                                            ★
+                                          </span>
+                                        )}
                                       </span>
                                     </div>
                                     <strong className="text-lg text-zinc-950">
@@ -600,8 +646,20 @@ export default function Fixture() {
                                           {match.awayTeam.name.slice(0, 1)}
                                         </div>
                                       )}
-                                      <span className="truncate text-sm font-medium text-zinc-900">
+                                      <span
+                                        className={`truncate text-sm font-medium ${
+                                          isFavoriteAway
+                                            ? "text-amber-800"
+                                            : "text-zinc-900"
+                                        }`}
+                                      >
                                         {match.awayTeam.name}
+                                        {isFavoriteAway && (
+                                          <span className="text-amber-500">
+                                            {" "}
+                                            ★
+                                          </span>
+                                        )}
                                       </span>
                                     </div>
                                     <strong className="text-lg text-zinc-950">
@@ -624,6 +682,30 @@ export default function Fixture() {
                 </div>
               </section>
             ))}
+
+            {knockoutMatches.length > 0 && (
+              <section>
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+                  <div className="border-b border-zinc-100 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                      Fase final
+                    </p>
+                    <h3 className="mt-1 text-xl font-semibold text-zinc-950">
+                      Eliminatorias
+                    </h3>
+                  </div>
+
+                  <div className="px-4 py-4">
+                    <Bracket
+                      matches={knockoutMatches}
+                      playedMatches={playedMatches}
+                      liveMatches={liveMatches}
+                      favoriteTeamKey={favoriteTeamKey}
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
         </>
       )}

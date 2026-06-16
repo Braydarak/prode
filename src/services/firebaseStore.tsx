@@ -45,6 +45,7 @@ export type UserLeaderboardEntry = {
   email: string | null;
   photoUrl: string | null;
   points: number;
+  favoriteTeamKey?: string | null;
   createdAt: unknown;
   updatedAt: unknown;
 };
@@ -293,6 +294,33 @@ export function onLeaderboardSnapshot(params: {
       ),
     );
   });
+}
+
+export function onUserProfileSnapshot(params: {
+  userId: string;
+  callback: (profile: UserLeaderboardEntry | null) => void;
+}): Unsubscribe {
+  return onSnapshot(getUserDocRef(params.userId), (snapshot) => {
+    params.callback(
+      snapshot.exists()
+        ? (snapshot.data() as unknown as UserLeaderboardEntry)
+        : null,
+    );
+  });
+}
+
+export async function setUserFavoriteTeamKey(input: {
+  userId: string;
+  favoriteTeamKey: string | null;
+}): Promise<void> {
+  await setDoc(
+    getUserDocRef(input.userId),
+    {
+      favoriteTeamKey: input.favoriteTeamKey ?? null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 }
 
 export async function getLeaderboardEntries(

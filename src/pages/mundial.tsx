@@ -1,6 +1,10 @@
 import Fixture from "../components/fixture";
 
-export default function MundialPage() {
+type MundialPageProps = {
+  favoriteTeamKey: string | null;
+};
+
+export default function MundialPage({ favoriteTeamKey }: MundialPageProps) {
   return (
     <section className="relative left-1/2 right-1/2 mx-[-50vw] w-screen">
       <div className="space-y-6 px-4 sm:px-6 lg:px-8">
@@ -17,7 +21,7 @@ export default function MundialPage() {
           </p>
         </div>
 
-        <Fixture />
+        <Fixture favoriteTeamKey={favoriteTeamKey} />
       </div>
     </section>
   );
