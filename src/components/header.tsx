@@ -96,7 +96,7 @@ export default function Header({
               type="button"
               onClick={onLogout}
               aria-label="Cerrar sesión"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-950 text-sm font-semibold text-white transition hover:bg-zinc-800 lg:h-auto lg:w-auto lg:gap-2 lg:px-4 lg:py-2"
+              className="hidden items-center justify-center rounded-full bg-zinc-950 text-sm font-semibold text-white transition hover:bg-zinc-800 lg:inline-flex lg:h-auto lg:w-auto lg:gap-2 lg:px-4 lg:py-2"
             >
               <LogOut size={16} strokeWidth={2.2} />
               <span className="hidden lg:inline">Cerrar sesión</span>
@@ -175,6 +175,25 @@ export default function Header({
                     {item.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  style={{
+                    transitionDelay: mobileMenuOpen
+                      ? `${120 + navItems.length * 70}ms`
+                      : "0ms",
+                  }}
+                  className={`rounded-2xl px-4 py-4 text-right text-lg font-semibold transition-all duration-300 ease-out ${
+                    mobileMenuOpen
+                      ? "translate-x-0 opacity-100"
+                      : "translate-x-6 opacity-0"
+                  } border border-zinc-950 bg-transparent text-zinc-950 hover:bg-zinc-950 hover:text-white`}
+                >
+                  Cerrar sesión
+                </button>
               </nav>
             </div>
           </div>
