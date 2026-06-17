@@ -47,6 +47,110 @@ body {
     sans-serif;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
+body,
+#root {
+  transition:
+    background-color 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    background-color 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+html.dark body {
+  background-color: #09090b;
+  color: #f4f4f5;
+}
+
+html.dark #root {
+  background:
+    radial-gradient(circle at top, #064e3b 0%, #09090b 34%, #09090b 100%);
+}
+
+html.dark main[data-app-shell="true"] {
+  background:
+    radial-gradient(circle at top, #064e3b 0%, #09090b 34%, #09090b 100%) !important;
+}
+
+html.dark [class*="bg-white"] {
+  background-color: rgba(24, 24, 27, 0.92) !important;
+}
+
+html.dark [class*="bg-zinc-50"] {
+  background-color: #18181b !important;
+}
+
+html.dark [class*="bg-zinc-100"] {
+  background-color: #27272a !important;
+}
+
+html.dark [class*="bg-emerald-50"] {
+  background-color: rgba(6, 78, 59, 0.3) !important;
+}
+
+html.dark [class*="bg-emerald-100"] {
+  background-color: rgba(6, 95, 70, 0.4) !important;
+}
+
+html.dark [class*="bg-rose-50"] {
+  background-color: rgba(127, 29, 29, 0.22) !important;
+}
+
+html.dark [class*="bg-rose-100"] {
+  background-color: rgba(159, 18, 57, 0.28) !important;
+}
+
+html.dark [class*="border-zinc-100"],
+html.dark [class*="border-zinc-200"],
+html.dark [class*="border-zinc-300"] {
+  border-color: #3f3f46 !important;
+}
+
+html.dark [class*="border-emerald-100"],
+html.dark [class*="border-emerald-200"] {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+html.dark [class*="border-rose-200"] {
+  border-color: rgba(251, 113, 133, 0.35) !important;
+}
+
+html.dark [class*="text-zinc-950"],
+html.dark [class*="text-zinc-900"],
+html.dark [class*="text-zinc-800"] {
+  color: #fafafa !important;
+}
+
+html.dark [class*="text-zinc-700"],
+html.dark [class*="text-zinc-600"] {
+  color: #d4d4d8 !important;
+}
+
+html.dark [class*="text-zinc-500"] {
+  color: #a1a1aa !important;
+}
+
+html.dark [class*="text-emerald-700"],
+html.dark [class*="text-emerald-800"] {
+  color: #6ee7b7 !important;
+}
+
+html.dark [class*="text-rose-700"] {
+  color: #fda4af !important;
+}
+
 input,
 select,
 textarea {

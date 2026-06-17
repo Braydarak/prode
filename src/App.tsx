@@ -17,7 +17,7 @@ import MundialPage from "./pages/mundial";
 import UsersTablePage from "./pages/usersTablePage";
 import UsersTable, { type UsersTableRow } from "./components/usersTable";
 import Prode from "./components/prode";
-import Header from "./components/header";
+import Header, { type ThemeMode } from "./components/header";
 import Loader from "./components/loader";
 import {
   getCurrentGoogleUser,
@@ -34,6 +34,7 @@ import {
   onUserPredictionsSnapshot,
   setUserFavoriteTeamKey,
   setUserLeaderboardPoints,
+  setUserThemeMode,
   type MatchPrediction,
   upsertUserLeaderboardProfile,
   type PlayedMatchResult,
@@ -48,6 +49,7 @@ const OFFICIAL_START_MATCH = {
 
 const FAVORITE_TEAM_STORAGE_KEY = "prode:favoriteTeamKey";
 const MOBILE_INTRO_SESSION_KEY = "prode:intro:seen";
+const THEME_STORAGE_KEY = "prode:theme";
 const COUNTRY_ABBREVIATIONS: Record<string, string> = {
   argelia: "ALG",
   argentina: "ARG",
@@ -316,9 +318,44 @@ function shouldShowMobileIntro(params: {
   );
 }
 
+function getSystemPreferredTheme(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function getStoredThemePreference(): ThemeMode | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === "light" || storedTheme === "dark") {
+      return storedTheme;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function getInitialTheme(): ThemeMode {
+  return getStoredThemePreference() ?? getSystemPreferredTheme();
+}
+
 function App() {
   const [currentPath, setCurrentPath] = useState(
     () => window.location.pathname,
+  );
+  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+  const [hasExplicitThemePreference, setHasExplicitThemePreference] = useState(
+    () => getStoredThemePreference() !== null,
   );
   const [user, setUser] = useState<User | null>(() => getCurrentGoogleUser());
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -330,6 +367,9 @@ function App() {
     useState(false);
   const [isRevealOverlayVisible, setIsRevealOverlayVisible] = useState(false);
   const [isRevealOverlayOpaque, setIsRevealOverlayOpaque] = useState(false);
+  const [isThemeOverlayVisible, setIsThemeOverlayVisible] = useState(false);
+  const [isThemeOverlayOpaque, setIsThemeOverlayOpaque] = useState(false);
+  const [themeOverlayMode, setThemeOverlayMode] = useState<ThemeMode>(theme);
   const [resultsByGroup, setResultsByGroup] = useState<
     WorldCupResultsByGroup[]
   >([]);
@@ -358,7 +398,12 @@ function App() {
   const favoriteTeamKeyFromFirebaseRef = useRef<string | null | undefined>(
     undefined,
   );
+  const themePreferenceFromFirebaseRef = useRef<ThemeMode | null | undefined>(
+    undefined,
+  );
   const recentResultsScrollerRef = useRef<HTMLDivElement | null>(null);
+  const themeTransitionTimeoutRef = useRef<number | null>(null);
+  const isDarkMode = theme === "dark";
   const isFavoriteTeamPage = currentPath === "/seleccion-favorita";
   const isMundialPage = currentPath === "/mundial";
   const isAllPredictionsPage = currentPath === "/predicciones";
@@ -426,6 +471,72 @@ function App() {
   }, [resultsByGroup]);
 
   useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const root = document.documentElement;
+    root.classList.toggle("dark", isDarkMode);
+
+    try {
+      if (hasExplicitThemePreference) {
+        window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+      } else {
+        window.localStorage.removeItem(THEME_STORAGE_KEY);
+      }
+    } catch {
+      return;
+    }
+  }, [hasExplicitThemePreference, isDarkMode, theme]);
+
+  useEffect(() => {
+    if (hasExplicitThemePreference || typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mediaQuery) {
+      return;
+    }
+
+    const handleChange = () => {
+      setTheme(mediaQuery.matches ? "dark" : "light");
+    };
+
+    handleChange();
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+    };
+  }, [hasExplicitThemePreference]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const root = document.documentElement;
+    if (isThemeOverlayVisible) {
+      root.classList.add("theme-transitioning");
+    } else {
+      root.classList.remove("theme-transitioning");
+    }
+
+    return () => {
+      root.classList.remove("theme-transitioning");
+    };
+  }, [isThemeOverlayVisible]);
+
+  useEffect(() => {
+    return () => {
+      if (themeTransitionTimeoutRef.current !== null) {
+        window.clearTimeout(themeTransitionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       if (favoriteTeamKey) {
@@ -448,6 +559,7 @@ function App() {
       callback: (profile) => {
         if (!profile) {
           favoriteTeamKeyFromFirebaseRef.current = null;
+          themePreferenceFromFirebaseRef.current = undefined;
           return;
         }
 
@@ -455,6 +567,10 @@ function App() {
         const hasFavoriteTeamKey = Object.prototype.hasOwnProperty.call(
           profileAny,
           "favoriteTeamKey",
+        );
+        const hasThemeMode = Object.prototype.hasOwnProperty.call(
+          profileAny,
+          "themeMode",
         );
 
         if (!hasFavoriteTeamKey) {
@@ -465,20 +581,60 @@ function App() {
               favoriteTeamKey,
             }).catch(() => null);
           }
+        } else {
+          const firebaseFavorite =
+            typeof profile.favoriteTeamKey === "string"
+              ? profile.favoriteTeamKey
+              : null;
+          favoriteTeamKeyFromFirebaseRef.current = firebaseFavorite;
+          setFavoriteTeamKey((current) =>
+            current === firebaseFavorite ? current : firebaseFavorite,
+          );
+        }
+
+        if (!hasThemeMode) {
+          themePreferenceFromFirebaseRef.current = null;
           return;
         }
 
-        const firebaseFavorite =
-          typeof profile.favoriteTeamKey === "string"
-            ? profile.favoriteTeamKey
+        const firebaseTheme =
+          profile.themeMode === "light" || profile.themeMode === "dark"
+            ? profile.themeMode
             : null;
-        favoriteTeamKeyFromFirebaseRef.current = firebaseFavorite;
-        setFavoriteTeamKey((current) =>
-          current === firebaseFavorite ? current : firebaseFavorite,
+        themePreferenceFromFirebaseRef.current = firebaseTheme;
+
+        if (firebaseTheme) {
+          setHasExplicitThemePreference(true);
+          setTheme((current) =>
+            current === firebaseTheme ? current : firebaseTheme,
+          );
+          return;
+        }
+
+        setHasExplicitThemePreference(false);
+        const systemTheme = getSystemPreferredTheme();
+        setTheme((current) =>
+          current === systemTheme ? current : systemTheme,
         );
       },
     });
   }, [favoriteTeamKey, user]);
+
+  useEffect(() => {
+    if (!user || !hasExplicitThemePreference) {
+      return;
+    }
+
+    if (themePreferenceFromFirebaseRef.current === theme) {
+      return;
+    }
+
+    themePreferenceFromFirebaseRef.current = theme;
+    void setUserThemeMode({
+      userId: user.uid,
+      themeMode: theme,
+    }).catch(() => null);
+  }, [hasExplicitThemePreference, theme, user]);
   const leaderboardUsers = useMemo<UsersTableRow[]>(() => {
     const statsByUserId = new Map<
       string,
@@ -923,7 +1079,7 @@ function App() {
   }
 
   if (isAuthLoading || !user) {
-    return renderWithReveal(<LoginPage />);
+    return renderWithReveal(<LoginPage theme={theme} />);
   }
 
   async function handleLogout() {
@@ -987,6 +1143,32 @@ function App() {
     });
   }
 
+  function handleToggleTheme() {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+
+    if (themeTransitionTimeoutRef.current !== null) {
+      window.clearTimeout(themeTransitionTimeoutRef.current);
+      themeTransitionTimeoutRef.current = null;
+    }
+
+    setThemeOverlayMode(theme);
+    setIsThemeOverlayVisible(true);
+    setIsThemeOverlayOpaque(true);
+    setHasExplicitThemePreference(true);
+    setTheme(nextTheme);
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setIsThemeOverlayOpaque(false);
+      });
+    });
+
+    themeTransitionTimeoutRef.current = window.setTimeout(() => {
+      setIsThemeOverlayVisible(false);
+      themeTransitionTimeoutRef.current = null;
+    }, 680);
+  }
+
   function renderPredictionBadge(
     matchId: string,
     teams: {
@@ -997,11 +1179,23 @@ function App() {
     const prediction = currentUserPredictionsByMatchId.get(matchId);
 
     return (
-      <div className="mt-3 border-t border-zinc-100 pt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+      <div
+        className={`mt-3 border-t pt-3 ${
+          isDarkMode ? "border-zinc-700" : "border-zinc-100"
+        }`}
+      >
+        <p
+          className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${
+            isDarkMode ? "text-zinc-400" : "text-zinc-500"
+          }`}
+        >
           Tu prediccion
         </p>
-        <p className="mt-1 text-sm font-semibold text-zinc-900">
+        <p
+          className={`mt-1 text-sm font-semibold ${
+            isDarkMode ? "text-zinc-100" : "text-zinc-900"
+          }`}
+        >
           {prediction
             ? `${getCountryAbbreviation(teams.homeName)} ${prediction.predictedHomeGoals} - ${prediction.predictedAwayGoals} ${getCountryAbbreviation(teams.awayName)}`
             : "Sin cargar"}
@@ -1034,6 +1228,17 @@ function App() {
             }`}
           />
         )}
+        {isThemeOverlayVisible && (
+          <div
+            className={`pointer-events-none fixed inset-0 z-90 transition-opacity duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              isThemeOverlayOpaque ? "opacity-100" : "opacity-0"
+            } ${
+              themeOverlayMode === "dark"
+                ? "bg-[radial-gradient(circle_at_top,#064e3b_0%,#09090b_34%,#09090b_100%)]"
+                : "bg-[radial-gradient(circle_at_top,#d1fae5_0%,#f8fafc_30%,#f8fafc_100%)]"
+            }`}
+          />
+        )}
       </>
     );
   }
@@ -1041,11 +1246,18 @@ function App() {
   return renderWithReveal(
     <main
       id="top"
-      className="min-h-screen bg-[radial-gradient(circle_at_top,#d1fae5_0%,#f8fafc_30%,#f8fafc_100%)]"
+      data-app-shell="true"
+      className={`min-h-screen ${
+        isDarkMode
+          ? "bg-[radial-gradient(circle_at_top,#064e3b_0%,#09090b_34%,#09090b_100%)] text-zinc-100"
+          : "bg-[radial-gradient(circle_at_top,#d1fae5_0%,#f8fafc_30%,#f8fafc_100%)] text-zinc-950"
+      }`}
     >
       <Header
         onLogout={() => void handleLogout()}
         onNavigate={handleNavigate}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         currentPath={
           isFavoriteTeamPage
             ? "/seleccion-favorita"
@@ -1061,7 +1273,13 @@ function App() {
 
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
         {error && (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div
+            className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${
+              isDarkMode
+                ? "border-rose-900/50 bg-rose-950/40 text-rose-200"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}
+          >
             Error: <span className="font-medium">{error}</span>
           </div>
         )}
@@ -1090,7 +1308,11 @@ function App() {
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
                     En vivo
                   </p>
-                  <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+                  <h2
+                    className={`mt-1 text-xl font-semibold ${
+                      isDarkMode ? "text-zinc-50" : "text-zinc-950"
+                    }`}
+                  >
                     {liveMatches.length > 1
                       ? "Partidos en juego ahora"
                       : "Partido en juego ahora"}
@@ -1117,23 +1339,43 @@ function App() {
                     return (
                       <article
                         key={match.id}
-                        className={`overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm ${
+                        className={`overflow-hidden rounded-3xl border ${
+                          isDarkMode
+                            ? "border-emerald-900/40 bg-zinc-900 shadow-[0_20px_40px_rgba(0,0,0,0.35)]"
+                            : "border-emerald-200 bg-white shadow-sm"
+                        } ${
                           liveMatches.length > 1
                             ? "min-w-[280px] max-w-[320px] shrink-0 snap-start"
                             : ""
                         }`}
                       >
-                        <div className="border-b border-emerald-100 bg-linear-to-r from-emerald-50 to-white px-4 py-3">
+                        <div
+                          className={`border-b px-4 py-3 ${
+                            isDarkMode
+                              ? "border-emerald-900/40 bg-linear-to-r from-emerald-950/70 to-zinc-900"
+                              : "border-emerald-100 bg-linear-to-r from-emerald-50 to-white"
+                          }`}
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
                                 Grupo {match.group}
                               </p>
-                              <p className="mt-1 truncate text-sm font-medium text-zinc-600">
+                              <p
+                                className={`mt-1 truncate text-sm font-medium ${
+                                  isDarkMode ? "text-zinc-300" : "text-zinc-600"
+                                }`}
+                              >
                                 {match.venue ?? "Sede a confirmar"}
                               </p>
                             </div>
-                            <span className="shrink-0 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
+                            <span
+                              className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                                isDarkMode
+                                  ? "bg-rose-950/60 text-rose-200"
+                                  : "bg-rose-100 text-rose-700"
+                              }`}
+                            >
                               {formatLiveMatchTime(match, liveClockMs)}
                             </span>
                           </div>
@@ -1150,18 +1392,34 @@ function App() {
                                     className="h-9 w-9 object-contain"
                                   />
                                 ) : (
-                                  <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                  <div
+                                    className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold ${
+                                      isDarkMode
+                                        ? "bg-zinc-800 text-zinc-200"
+                                        : "bg-zinc-100 text-zinc-700"
+                                    }`}
+                                  >
                                     {match.homeTeam.name.slice(0, 1)}
                                   </div>
                                 )}
-                                <p className="truncate text-base font-semibold text-zinc-950">
+                                <p
+                                  className={`truncate text-base font-semibold ${
+                                    isDarkMode
+                                      ? "text-zinc-50"
+                                      : "text-zinc-950"
+                                  }`}
+                                >
                                   {match.homeTeam.name}
                                   {isFavoriteHome && (
                                     <span className="text-amber-500"> ★</span>
                                   )}
                                 </p>
                               </div>
-                              <span className="text-2xl font-bold text-zinc-950">
+                              <span
+                                className={`text-2xl font-bold ${
+                                  isDarkMode ? "text-zinc-50" : "text-zinc-950"
+                                }`}
+                              >
                                 {match.homeTeam.score ?? 0}
                               </span>
                             </div>
@@ -1175,18 +1433,34 @@ function App() {
                                     className="h-9 w-9 object-contain"
                                   />
                                 ) : (
-                                  <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                  <div
+                                    className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold ${
+                                      isDarkMode
+                                        ? "bg-zinc-800 text-zinc-200"
+                                        : "bg-zinc-100 text-zinc-700"
+                                    }`}
+                                  >
                                     {match.awayTeam.name.slice(0, 1)}
                                   </div>
                                 )}
-                                <p className="truncate text-base font-semibold text-zinc-950">
+                                <p
+                                  className={`truncate text-base font-semibold ${
+                                    isDarkMode
+                                      ? "text-zinc-50"
+                                      : "text-zinc-950"
+                                  }`}
+                                >
                                   {match.awayTeam.name}
                                   {isFavoriteAway && (
                                     <span className="text-amber-500"> ★</span>
                                   )}
                                 </p>
                               </div>
-                              <span className="text-2xl font-bold text-zinc-950">
+                              <span
+                                className={`text-2xl font-bold ${
+                                  isDarkMode ? "text-zinc-50" : "text-zinc-950"
+                                }`}
+                              >
                                 {match.awayTeam.score ?? 0}
                               </span>
                             </div>
@@ -1210,7 +1484,11 @@ function App() {
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
                       Resultados
                     </p>
-                    <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+                    <h2
+                      className={`mt-1 text-xl font-semibold ${
+                        isDarkMode ? "text-zinc-50" : "text-zinc-950"
+                      }`}
+                    >
                       Últimas 24 hs
                     </h2>
                   </div>
@@ -1234,21 +1512,43 @@ function App() {
                       return (
                         <article
                           key={`${match.id}-${index}`}
-                          className="w-[220px] shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm"
+                          className={`w-[220px] shrink-0 overflow-hidden rounded-md border ${
+                            isDarkMode
+                              ? "border-zinc-800 bg-zinc-900 shadow-[0_18px_30px_rgba(0,0,0,0.3)]"
+                              : "border-zinc-200 bg-white shadow-sm"
+                          }`}
                         >
-                          <div className="border-b border-zinc-100 bg-zinc-50 px-3 py-2">
+                          <div
+                            className={`border-b px-3 py-2 ${
+                              isDarkMode
+                                ? "border-zinc-800 bg-zinc-950/70"
+                                : "border-zinc-100 bg-zinc-50"
+                            }`}
+                          >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
                                   Grupo {match.group}
                                 </p>
-                                <p className="mt-1 truncate text-xs font-medium text-zinc-600">
+                                <p
+                                  className={`mt-1 truncate text-xs font-medium ${
+                                    isDarkMode
+                                      ? "text-zinc-300"
+                                      : "text-zinc-600"
+                                  }`}
+                                >
                                   {matchDate
                                     ? formatPlayedMatchDate(matchDate)
                                     : (match.venue ?? "Final")}
                                 </p>
                               </div>
-                              <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                              <span
+                                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                                  isDarkMode
+                                    ? "bg-emerald-950/60 text-emerald-200"
+                                    : "bg-emerald-100 text-emerald-800"
+                                }`}
+                              >
                                 Final
                               </span>
                             </div>
@@ -1265,18 +1565,36 @@ function App() {
                                       className="h-7 w-7 object-contain"
                                     />
                                   ) : (
-                                    <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-700">
+                                    <div
+                                      className={`grid h-7 w-7 place-items-center rounded-full text-xs font-bold ${
+                                        isDarkMode
+                                          ? "bg-zinc-800 text-zinc-200"
+                                          : "bg-zinc-100 text-zinc-700"
+                                      }`}
+                                    >
                                       {match.homeTeam.name.slice(0, 1)}
                                     </div>
                                   )}
-                                  <p className="truncate text-sm font-semibold text-zinc-950">
+                                  <p
+                                    className={`truncate text-sm font-semibold ${
+                                      isDarkMode
+                                        ? "text-zinc-50"
+                                        : "text-zinc-950"
+                                    }`}
+                                  >
                                     {match.homeTeam.name}
                                     {isFavoriteHome && (
                                       <span className="text-amber-500"> ★</span>
                                     )}
                                   </p>
                                 </div>
-                                <span className="text-xl font-bold text-zinc-950">
+                                <span
+                                  className={`text-xl font-bold ${
+                                    isDarkMode
+                                      ? "text-zinc-50"
+                                      : "text-zinc-950"
+                                  }`}
+                                >
                                   {match.homeTeam.score}
                                 </span>
                               </div>
@@ -1290,18 +1608,36 @@ function App() {
                                       className="h-7 w-7 object-contain"
                                     />
                                   ) : (
-                                    <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-700">
+                                    <div
+                                      className={`grid h-7 w-7 place-items-center rounded-full text-xs font-bold ${
+                                        isDarkMode
+                                          ? "bg-zinc-800 text-zinc-200"
+                                          : "bg-zinc-100 text-zinc-700"
+                                      }`}
+                                    >
                                       {match.awayTeam.name.slice(0, 1)}
                                     </div>
                                   )}
-                                  <p className="truncate text-sm font-semibold text-zinc-950">
+                                  <p
+                                    className={`truncate text-sm font-semibold ${
+                                      isDarkMode
+                                        ? "text-zinc-50"
+                                        : "text-zinc-950"
+                                    }`}
+                                  >
                                     {match.awayTeam.name}
                                     {isFavoriteAway && (
                                       <span className="text-amber-500"> ★</span>
                                     )}
                                   </p>
                                 </div>
-                                <span className="text-xl font-bold text-zinc-950">
+                                <span
+                                  className={`text-xl font-bold ${
+                                    isDarkMode
+                                      ? "text-zinc-50"
+                                      : "text-zinc-950"
+                                  }`}
+                                >
                                   {match.awayTeam.score}
                                 </span>
                               </div>
@@ -1332,21 +1668,43 @@ function App() {
                       return (
                         <article
                           key={match.id}
-                          className="w-[calc((100%-3rem)/4)] shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm"
+                          className={`w-[calc((100%-3rem)/4)] shrink-0 overflow-hidden rounded-md border ${
+                            isDarkMode
+                              ? "border-zinc-800 bg-zinc-900 shadow-[0_18px_30px_rgba(0,0,0,0.3)]"
+                              : "border-zinc-200 bg-white shadow-sm"
+                          }`}
                         >
-                          <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-3">
+                          <div
+                            className={`border-b px-4 py-3 ${
+                              isDarkMode
+                                ? "border-zinc-800 bg-zinc-950/70"
+                                : "border-zinc-100 bg-zinc-50"
+                            }`}
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
                                   Grupo {match.group}
                                 </p>
-                                <p className="mt-1 truncate text-sm font-medium text-zinc-600">
+                                <p
+                                  className={`mt-1 truncate text-sm font-medium ${
+                                    isDarkMode
+                                      ? "text-zinc-300"
+                                      : "text-zinc-600"
+                                  }`}
+                                >
                                   {matchDate
                                     ? formatPlayedMatchDate(matchDate)
                                     : (match.venue ?? "Final")}
                                 </p>
                               </div>
-                              <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                              <span
+                                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                                  isDarkMode
+                                    ? "bg-emerald-950/60 text-emerald-200"
+                                    : "bg-emerald-100 text-emerald-800"
+                                }`}
+                              >
                                 Final
                               </span>
                             </div>
@@ -1363,18 +1721,36 @@ function App() {
                                       className="h-9 w-9 object-contain"
                                     />
                                   ) : (
-                                    <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                    <div
+                                      className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold ${
+                                        isDarkMode
+                                          ? "bg-zinc-800 text-zinc-200"
+                                          : "bg-zinc-100 text-zinc-700"
+                                      }`}
+                                    >
                                       {match.homeTeam.name.slice(0, 1)}
                                     </div>
                                   )}
-                                  <p className="truncate text-base font-semibold text-zinc-950">
+                                  <p
+                                    className={`truncate text-base font-semibold ${
+                                      isDarkMode
+                                        ? "text-zinc-50"
+                                        : "text-zinc-950"
+                                    }`}
+                                  >
                                     {match.homeTeam.name}
                                     {isFavoriteHome && (
                                       <span className="text-amber-500"> ★</span>
                                     )}
                                   </p>
                                 </div>
-                                <span className="text-2xl font-bold text-zinc-950">
+                                <span
+                                  className={`text-2xl font-bold ${
+                                    isDarkMode
+                                      ? "text-zinc-50"
+                                      : "text-zinc-950"
+                                  }`}
+                                >
                                   {match.homeTeam.score}
                                 </span>
                               </div>
@@ -1388,18 +1764,36 @@ function App() {
                                       className="h-9 w-9 object-contain"
                                     />
                                   ) : (
-                                    <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-700">
+                                    <div
+                                      className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold ${
+                                        isDarkMode
+                                          ? "bg-zinc-800 text-zinc-200"
+                                          : "bg-zinc-100 text-zinc-700"
+                                      }`}
+                                    >
                                       {match.awayTeam.name.slice(0, 1)}
                                     </div>
                                   )}
-                                  <p className="truncate text-base font-semibold text-zinc-950">
+                                  <p
+                                    className={`truncate text-base font-semibold ${
+                                      isDarkMode
+                                        ? "text-zinc-50"
+                                        : "text-zinc-950"
+                                    }`}
+                                  >
                                     {match.awayTeam.name}
                                     {isFavoriteAway && (
                                       <span className="text-amber-500"> ★</span>
                                     )}
                                   </p>
                                 </div>
-                                <span className="text-2xl font-bold text-zinc-950">
+                                <span
+                                  className={`text-2xl font-bold ${
+                                    isDarkMode
+                                      ? "text-zinc-50"
+                                      : "text-zinc-950"
+                                  }`}
+                                >
                                   {match.awayTeam.score}
                                 </span>
                               </div>
@@ -1418,7 +1812,7 @@ function App() {
             )}
 
             <section id="mis-predicciones">
-              <Prode userId={user.uid} />
+              <Prode userId={user.uid} theme={theme} />
             </section>
 
             <section id="partidos" className="mt-8">

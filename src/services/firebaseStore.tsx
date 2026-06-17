@@ -46,6 +46,7 @@ export type UserLeaderboardEntry = {
   photoUrl: string | null;
   points: number;
   favoriteTeamKey?: string | null;
+  themeMode?: "light" | "dark" | null;
   createdAt: unknown;
   updatedAt: unknown;
 };
@@ -317,6 +318,20 @@ export async function setUserFavoriteTeamKey(input: {
     getUserDocRef(input.userId),
     {
       favoriteTeamKey: input.favoriteTeamKey ?? null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function setUserThemeMode(input: {
+  userId: string;
+  themeMode: "light" | "dark" | null;
+}): Promise<void> {
+  await setDoc(
+    getUserDocRef(input.userId),
+    {
+      themeMode: input.themeMode ?? null,
       updatedAt: serverTimestamp(),
     },
     { merge: true },

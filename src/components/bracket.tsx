@@ -303,7 +303,7 @@ export default function Bracket({
                 <img
                   src={wc26Logo}
                   alt="Logo"
-                  className="pointer-events-none absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2 object-contain opacity-95"
+                  className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 object-contain opacity-95"
                 />
                 <MatchCard
                   match={finalMatch}

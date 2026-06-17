@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import blackLoginBg from "../assets/black-login.png";
 import googleLogo from "../assets/google-logo.png";
 import mundialBg from "../assets/mundial.png";
+import type { ThemeMode } from "../components/header";
 
 import {
   isGoogleLoginConfigured,
@@ -8,10 +10,11 @@ import {
   signInWithGoogle,
 } from "../services/googleLogin";
 
-export default function LoginPage() {
+export default function LoginPage({ theme }: { theme: ThemeMode }) {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isDarkMode = theme === "dark";
 
   const hasFirebaseConfig = useMemo(() => isGoogleLoginConfigured(), []);
 
@@ -51,12 +54,18 @@ export default function LoginPage() {
     <main
       className="relative min-h-screen overflow-hidden bg-zinc-950 text-zinc-950"
       style={{
-        backgroundImage: `url(${mundialBg})`,
+        backgroundImage: `url(${isDarkMode ? blackLoginBg : mundialBg})`,
         backgroundPosition: "center",
         backgroundSize: "cover",
       }}
     >
-      <div className="absolute inset-0 bg-linear-to-br from-black/70 via-black/55 to-emerald-950/60" />
+      <div
+        className={`absolute inset-0 ${
+          isDarkMode
+            ? "bg-linear-to-br from-black/78 via-black/62 to-zinc-950/70"
+            : "bg-linear-to-br from-black/70 via-black/55 to-emerald-950/60"
+        }`}
+      />
 
       <section className="relative flex min-h-screen w-full flex-col px-4 py-8 md:items-center md:justify-center">
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col md:flex-none md:items-center">

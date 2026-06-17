@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import wc26Logo from "../assets/WC26_Logo.png";
+import wc26LogoWhite from "../assets/WC26_Logo-white.png";
 import { getWorldCup2026Groups, type WorldCupGroupMatch } from "../services";
 import {
   onUserPredictionsSnapshot,
@@ -11,10 +12,12 @@ import {
   getCurrentGoogleUser,
   getFirebaseAppInstance,
 } from "../services/googleLogin";
+import type { ThemeMode } from "./header";
 import Loader from "./loader";
 
 type ProdeProps = {
   userId: string;
+  theme: ThemeMode;
 };
 
 type DraftPrediction = {
@@ -52,7 +55,7 @@ function formatMatchDate(date: Date | null): string {
   }).format(date);
 }
 
-export default function Prode({ userId }: ProdeProps) {
+export default function Prode({ userId, theme }: ProdeProps) {
   const predictionDeadlineMs = 60 * 60 * 1000;
   const [matches, setMatches] = useState<WorldCupGroupMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +70,7 @@ export default function Prode({ userId }: ProdeProps) {
   const [drafts, setDrafts] = useState<Record<string, DraftPrediction>>({});
 
   const touchedRef = useRef<Record<string, boolean>>({});
+  const isDarkMode = theme === "dark";
 
   const validation = useMemo(() => {
     const invalidMatchIds: string[] = [];
@@ -287,15 +291,29 @@ export default function Prode({ userId }: ProdeProps) {
 
   return (
     <section className="relative left-1/2 right-1/2 mx-[-50vw] w-screen">
-      <div className="border-b border-emerald-100 bg-[linear-gradient(90deg,#ecfdf5_0%,#f0fdfa_50%,#eff6ff_100%)] px-4 py-5 sm:px-6 lg:px-8">
+      <div
+        className={`border-b px-4 py-5 sm:px-6 lg:px-8 ${
+          isDarkMode
+            ? "border-emerald-900/40 bg-[linear-gradient(90deg,#052e2b_0%,#042f2e_50%,#0f172a_100%)]"
+            : "border-emerald-100 bg-[linear-gradient(90deg,#ecfdf5_0%,#f0fdfa_50%,#eff6ff_100%)]"
+        }`}
+      >
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
             Prode
           </p>
-          <h2 className="mt-2 text-2xl font-semibold leading-tight text-zinc-950">
+          <h2
+            className={`mt-2 text-2xl font-semibold leading-tight ${
+              isDarkMode ? "text-zinc-50" : "text-zinc-950"
+            }`}
+          >
             Cargá tus pronósticos
           </h2>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-600">
+          <p
+            className={`mt-2 max-w-2xl text-sm ${
+              isDarkMode ? "text-zinc-300" : "text-zinc-600"
+            }`}
+          >
             Se muestran los partidos de las próximas 48 horas. Puntaje: 2 si
             acertás el resultado exacto, 1 si acertás ganador/empate, 0 si no.
             Podés cargar tu predicción hasta 1 hora antes del partido.
@@ -305,7 +323,13 @@ export default function Prode({ userId }: ProdeProps) {
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">
         {error && (
-          <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div
+            className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+              isDarkMode
+                ? "border-rose-900/50 bg-rose-950/40 text-rose-200"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}
+          >
             {error}
           </div>
         )}
@@ -313,12 +337,24 @@ export default function Prode({ userId }: ProdeProps) {
         {isLoading ? (
           <Loader label="Cargando partidos..." />
         ) : pendingMatches.length === 0 ? (
-          <div className="overflow-hidden rounded-3xl border border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdfa_45%,#eff6ff_100%)] shadow-sm">
+          <div
+            className={`overflow-hidden rounded-3xl border ${
+              isDarkMode
+                ? "border-emerald-900/40 bg-[linear-gradient(135deg,#052e2b_0%,#042f2e_45%,#0f172a_100%)] shadow-[0_20px_40px_rgba(0,0,0,0.35)]"
+                : "border-emerald-200 bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdfa_45%,#eff6ff_100%)] shadow-sm"
+            }`}
+          >
             <div className="grid gap-6 px-6 py-8 md:grid-cols-[auto_1fr] md:items-center md:px-8">
               <div className="flex justify-center md:justify-start">
-                <div className="grid h-24 w-24 place-items-center rounded-3xl bg-white/80 shadow-[0_20px_40px_rgba(16,24,40,0.08)] ring-1 ring-emerald-100">
+                <div
+                  className={`grid h-24 w-24 place-items-center rounded-3xl ring-1 ${
+                    isDarkMode
+                      ? "bg-zinc-900/80 shadow-[0_20px_40px_rgba(0,0,0,0.35)] ring-emerald-900/50"
+                      : "bg-white/80 shadow-[0_20px_40px_rgba(16,24,40,0.08)] ring-emerald-100"
+                  }`}
+                >
                   <img
-                    src={wc26Logo}
+                    src={isDarkMode ? wc26LogoWhite : wc26Logo}
                     alt="Prode Mundial"
                     className="h-16 w-16 object-contain"
                   />
@@ -329,15 +365,27 @@ export default function Prode({ userId }: ProdeProps) {
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
                   Todo al dia
                 </p>
-                <h3 className="mt-2 text-2xl font-semibold text-zinc-950">
+                <h3
+                  className={`mt-2 text-2xl font-semibold ${
+                    isDarkMode ? "text-zinc-50" : "text-zinc-950"
+                  }`}
+                >
                   Todavia no hay nuevos partidos para predecir
                 </h3>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600">
+                <p
+                  className={`mt-3 max-w-2xl text-sm leading-6 ${
+                    isDarkMode ? "text-zinc-300" : "text-zinc-600"
+                  }`}
+                >
                   Ya cargaste todo lo disponible en las proximas 48 horas.
                   Cuando aparezcan nuevos cruces, los vas a ver aca para
                   completar tus pronosticos.
                 </p>
-                <p className="mt-5 text-sm font-medium text-emerald-800">
+                <p
+                  className={`mt-5 text-sm font-medium ${
+                    isDarkMode ? "text-emerald-300" : "text-emerald-800"
+                  }`}
+                >
                   Volvé más tarde para seguir jugando
                 </p>
               </div>
@@ -352,33 +400,62 @@ export default function Prode({ userId }: ProdeProps) {
               };
               const isInvalid =
                 showValidation && validation.invalidMatchIds.includes(match.id);
-              const inputBase =
-                "mt-2 w-12 rounded-md border bg-white px-3 py-2 text-sm font-semibold text-zinc-900 outline-none transition focus:ring-4";
-              const inputValid =
-                "border-zinc-200 focus:border-emerald-400 focus:ring-emerald-100";
-              const inputInvalid =
-                "border-rose-300 focus:border-rose-400 focus:ring-rose-100";
+              const inputBase = `mt-2 w-12 rounded-md border px-3 py-2 text-sm font-semibold outline-none transition focus:ring-4 ${
+                isDarkMode
+                  ? "bg-zinc-950 text-zinc-100"
+                  : "bg-white text-zinc-900"
+              }`;
+              const inputValid = isDarkMode
+                ? "border-zinc-700 focus:border-emerald-500 focus:ring-emerald-950"
+                : "border-zinc-200 focus:border-emerald-400 focus:ring-emerald-100";
+              const inputInvalid = isDarkMode
+                ? "border-rose-700 focus:border-rose-500 focus:ring-rose-950"
+                : "border-rose-300 focus:border-rose-400 focus:ring-rose-100";
 
               return (
                 <article
                   key={match.id}
-                  className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm"
+                  className={`rounded-lg border p-3 ${
+                    isDarkMode
+                      ? "border-zinc-800 bg-zinc-900 shadow-[0_18px_30px_rgba(0,0,0,0.3)]"
+                      : "border-zinc-200 bg-white shadow-sm"
+                  }`}
                 >
-                  <header className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-100 pb-3">
+                  <header
+                    className={`flex flex-wrap items-start justify-between gap-2 border-b pb-3 ${
+                      isDarkMode ? "border-zinc-800" : "border-zinc-100"
+                    }`}
+                  >
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                         Grupo {match.group} · Fecha {match.round ?? "-"}
                       </p>
-                      <p className="mt-1 text-xs text-zinc-500">
+                      <p
+                        className={`mt-1 text-xs ${
+                          isDarkMode ? "text-zinc-400" : "text-zinc-500"
+                        }`}
+                      >
                         {formatMatchDate(date)}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-zinc-100 px-3 py-1 text-[11px] font-medium text-zinc-600">
+                      <span
+                        className={`rounded-md px-3 py-1 text-[11px] font-medium ${
+                          isDarkMode
+                            ? "bg-zinc-800 text-zinc-300"
+                            : "bg-zinc-100 text-zinc-600"
+                        }`}
+                      >
                         {match.status ?? "Programado"}
                       </span>
-                      <span className="shrink-0 rounded-md bg-amber-100 px-3 py-1 text-[11px] font-medium text-amber-800">
+                      <span
+                        className={`shrink-0 rounded-md px-3 py-1 text-[11px] font-medium ${
+                          isDarkMode
+                            ? "bg-amber-950/60 text-amber-200"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
                         Nueva
                       </span>
                     </div>
@@ -386,9 +463,19 @@ export default function Prode({ userId }: ProdeProps) {
 
                   <div className="mt-3 grid gap-3">
                     <div className="min-w-0">
-                      <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                      <div
+                        className={`grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border p-3 ${
+                          isDarkMode
+                            ? "border-zinc-800 bg-zinc-950/70"
+                            : "border-zinc-200 bg-zinc-50"
+                        }`}
+                      >
                         <div className="min-w-0">
-                          <label className="block min-w-0 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                          <label
+                            className={`block min-w-0 text-xs font-medium uppercase tracking-wide ${
+                              isDarkMode ? "text-zinc-400" : "text-zinc-500"
+                            }`}
+                          >
                             <span className="flex min-w-0 items-center gap-2">
                               {match.homeTeam.badgeUrl ? (
                                 <img
@@ -397,7 +484,13 @@ export default function Prode({ userId }: ProdeProps) {
                                   className="h-5 w-5 shrink-0 object-contain"
                                 />
                               ) : (
-                                <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-zinc-200 text-[10px] font-bold text-zinc-700">
+                                <span
+                                  className={`grid h-5 w-5 shrink-0 place-items-center rounded text-[10px] font-bold ${
+                                    isDarkMode
+                                      ? "bg-zinc-800 text-zinc-200"
+                                      : "bg-zinc-200 text-zinc-700"
+                                  }`}
+                                >
                                   {match.homeTeam.name.slice(0, 1)}
                                 </span>
                               )}
@@ -431,9 +524,19 @@ export default function Prode({ userId }: ProdeProps) {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                      <div
+                        className={`grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border p-3 ${
+                          isDarkMode
+                            ? "border-zinc-800 bg-zinc-950/70"
+                            : "border-zinc-200 bg-zinc-50"
+                        }`}
+                      >
                         <div className="min-w-0">
-                          <label className="block min-w-0 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                          <label
+                            className={`block min-w-0 text-xs font-medium uppercase tracking-wide ${
+                              isDarkMode ? "text-zinc-400" : "text-zinc-500"
+                            }`}
+                          >
                             <span className="flex min-w-0 items-center gap-2">
                               {match.awayTeam.badgeUrl ? (
                                 <img
@@ -442,7 +545,13 @@ export default function Prode({ userId }: ProdeProps) {
                                   className="h-5 w-5 shrink-0 object-contain"
                                 />
                               ) : (
-                                <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-zinc-200 text-[10px] font-bold text-zinc-700">
+                                <span
+                                  className={`grid h-5 w-5 shrink-0 place-items-center rounded text-[10px] font-bold ${
+                                    isDarkMode
+                                      ? "bg-zinc-800 text-zinc-200"
+                                      : "bg-zinc-200 text-zinc-700"
+                                  }`}
+                                >
                                   {match.awayTeam.name.slice(0, 1)}
                                 </span>
                               )}
@@ -476,7 +585,13 @@ export default function Prode({ userId }: ProdeProps) {
                     </div>
                   </div>
 
-                  <div className="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-500">
+                  <div
+                    className={`mt-3 border-t pt-3 text-xs ${
+                      isDarkMode
+                        ? "border-zinc-800 text-zinc-400"
+                        : "border-zinc-100 text-zinc-500"
+                    }`}
+                  >
                     {match.venue ?? "Sin estadio"} ·{" "}
                     {match.country ?? "Sin país"}
                   </div>
@@ -484,7 +599,11 @@ export default function Prode({ userId }: ProdeProps) {
               );
             })}
             <div className="mt-4 text-center md:col-span-2 xl:col-span-3">
-              <div className="text-sm text-zinc-700">
+              <div
+                className={`text-sm ${
+                  isDarkMode ? "text-zinc-300" : "text-zinc-700"
+                }`}
+              >
                 {pendingMatchesCount === 0
                   ? "Ya guardaste todas las predicciones disponibles."
                   : !validation.isComplete
