@@ -179,6 +179,7 @@ export async function getAllUserMatchPredictions(
 export function onUserPredictionsSnapshot(params: {
   userId: string;
   callback: (predictions: MatchPrediction[]) => void;
+  onError?: (error: unknown) => void;
 }): Unsubscribe {
   const q = query(
     collection(
@@ -190,15 +191,22 @@ export function onUserPredictionsSnapshot(params: {
     orderBy("updatedAt", "desc"),
   );
 
-  return onSnapshot(q, (snapshot) => {
-    params.callback(
-      snapshot.docs.map((docSnap) => docSnap.data() as MatchPrediction),
-    );
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      params.callback(
+        snapshot.docs.map((docSnap) => docSnap.data() as MatchPrediction),
+      );
+    },
+    (error) => {
+      params.onError?.(error);
+    },
+  );
 }
 
 export function onAllPredictionsSnapshot(params: {
   callback: (predictions: MatchPrediction[]) => void;
+  onError?: (error: unknown) => void;
 }): Unsubscribe {
   return onSnapshot(
     collectionGroup(getFirebaseFirestoreInstance(), "predictions"),
@@ -213,6 +221,9 @@ export function onAllPredictionsSnapshot(params: {
             return dateA.localeCompare(dateB);
           }),
       );
+    },
+    (error) => {
+      params.onError?.(error);
     },
   );
 }
@@ -282,19 +293,28 @@ export function onLeaderboardSnapshot(params: {
   callback: (users: UserLeaderboardEntry[]) => void;
   limitCount?: number;
 }): Unsubscribe {
-  const q = query(
-    collection(getFirebaseFirestoreInstance(), "users"),
-    orderBy("points", "desc"),
-    limit(params.limitCount ?? 50),
-  );
+  void params.limitCount;
 
-  return onSnapshot(q, (snapshot) => {
-    params.callback(
-      snapshot.docs.map(
-        (docSnap) => docSnap.data() as unknown as UserLeaderboardEntry,
-      ),
-    );
-  });
+  return onSnapshot(
+    collection(getFirebaseFirestoreInstance(), "users"),
+    (snapshot) => {
+      params.callback(
+        snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Partial<UserLeaderboardEntry>;
+          const points =
+            typeof data.points === "number" && Number.isFinite(data.points)
+              ? data.points
+              : 0;
+
+          return {
+            ...(data as UserLeaderboardEntry),
+            userId: typeof data.userId === "string" ? data.userId : docSnap.id,
+            points,
+          };
+        }),
+      );
+    },
+  );
 }
 
 export function onUserProfileSnapshot(params: {

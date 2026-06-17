@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { getWorldCup2026Groups } from "./services";
 import {
   hasFinalMatchStatus,
   getWorldCup2026ResultsByGroup,
@@ -42,14 +41,10 @@ import {
 } from "./services/firebaseStore";
 import type { User } from "firebase/auth";
 
-const OFFICIAL_START_MATCH = {
-  id: "2391740",
-  label: "Argentina vs Algeria",
-};
-
 const FAVORITE_TEAM_STORAGE_KEY = "prode:favoriteTeamKey";
 const MOBILE_INTRO_SESSION_KEY = "prode:intro:seen";
 const THEME_STORAGE_KEY = "prode:theme";
+const OFFICIAL_START_MATCH_ID = "2391740";
 const COUNTRY_ABBREVIATIONS: Record<string, string> = {
   argelia: "ALG",
   argentina: "ARG",
@@ -379,10 +374,10 @@ function App() {
   >([]);
   const [allPredictions, setAllPredictions] = useState<MatchPrediction[]>([]);
   const [userPredictions, setUserPredictions] = useState<MatchPrediction[]>([]);
+  const [shouldUsePerUserPredictions, setShouldUsePerUserPredictions] =
+    useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [officialStartMs, setOfficialStartMs] = useState<number | null>(null);
-  const [hasOfficialStartBegun, setHasOfficialStartBegun] = useState(true);
   const [liveClockMs, setLiveClockMs] = useState(() => Date.now());
   const [isSmallScreen, setIsSmallScreen] = useState(
     () => window.matchMedia?.("(max-width: 767px)").matches ?? false,
@@ -401,6 +396,7 @@ function App() {
   const themePreferenceFromFirebaseRef = useRef<ThemeMode | null | undefined>(
     undefined,
   );
+  const leaderboardPointsFromFirebaseRef = useRef<number | null>(null);
   const recentResultsScrollerRef = useRef<HTMLDivElement | null>(null);
   const themeTransitionTimeoutRef = useRef<number | null>(null);
   const isDarkMode = theme === "dark";
@@ -469,6 +465,14 @@ function App() {
       }),
     );
   }, [resultsByGroup]);
+  const officialStartMs = useMemo(() => {
+    const match = resultsByGroup
+      .flatMap((group) => group.matches)
+      .find((candidate) => candidate.id === OFFICIAL_START_MATCH_ID);
+    const ms = match ? getMatchStartMs(match) : null;
+    return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+  }, [resultsByGroup]);
+  const hasOfficialStartBegun = officialStartMs !== null;
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -548,6 +552,10 @@ function App() {
       return;
     }
   }, [favoriteTeamKey]);
+
+  useEffect(() => {
+    leaderboardPointsFromFirebaseRef.current = null;
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) {
@@ -647,56 +655,57 @@ function App() {
       }
     >();
 
-    if (hasOfficialStartBegun && typeof officialStartMs === "number") {
-      const matchStartMsById = new Map(
-        resultsByGroup
-          .flatMap((group) => group.matches)
-          .map((match) => [match.id, getMatchStartMs(match)] as const)
-          .filter((entry): entry is readonly [string, number] => {
-            const [, ms] = entry;
-            return typeof ms === "number" && Number.isFinite(ms);
-          }),
-      );
-      const eligibleResultsByMatchId = new Map(
-        playedResults
-          .map((result) => {
-            const startMs = matchStartMsById.get(result.matchId) ?? null;
-            return startMs !== null && startMs >= officialStartMs
-              ? ([result.matchId, result] as const)
-              : null;
-          })
-          .filter(
-            (entry): entry is readonly [string, PlayedMatchResult] =>
-              entry !== null,
-          ),
-      );
+    const matchStartMsById = new Map(
+      resultsByGroup
+        .flatMap((group) => group.matches)
+        .map((match) => [match.id, getMatchStartMs(match)] as const)
+        .filter((entry): entry is readonly [string, number] => {
+          const [, ms] = entry;
+          return typeof ms === "number" && Number.isFinite(ms);
+        }),
+    );
+    const eligibleResultsByMatchId = new Map<string, PlayedMatchResult>();
 
-      for (const prediction of allPredictions) {
-        const result = eligibleResultsByMatchId.get(prediction.matchId);
-        if (!result) {
+    if (hasOfficialStartBegun && typeof officialStartMs === "number") {
+      for (const result of playedResults) {
+        const startMs = matchStartMsById.get(result.matchId);
+        if (typeof startMs !== "number") {
           continue;
         }
 
-        const existing = statsByUserId.get(prediction.userId) ?? {
-          points: 0,
-          exactHits: 0,
-          outcomeHits: 0,
-          misses: 0,
-          predictions: 0,
-        };
+        if (startMs < officialStartMs) {
+          continue;
+        }
 
-        const points = calculatePredictionPoints(prediction, result);
-        const next = {
-          ...existing,
-          points: existing.points + points,
-          predictions: existing.predictions + 1,
-          exactHits: existing.exactHits + (points === 2 ? 1 : 0),
-          outcomeHits: existing.outcomeHits + (points === 1 ? 1 : 0),
-          misses: existing.misses + (points === 0 ? 1 : 0),
-        };
-
-        statsByUserId.set(prediction.userId, next);
+        eligibleResultsByMatchId.set(result.matchId, result);
       }
+    }
+
+    for (const prediction of allPredictions) {
+      const result = eligibleResultsByMatchId.get(prediction.matchId);
+      if (!result) {
+        continue;
+      }
+
+      const existing = statsByUserId.get(prediction.userId) ?? {
+        points: 0,
+        exactHits: 0,
+        outcomeHits: 0,
+        misses: 0,
+        predictions: 0,
+      };
+
+      const points = calculatePredictionPoints(prediction, result);
+      const next = {
+        ...existing,
+        points: existing.points + points,
+        predictions: existing.predictions + 1,
+        exactHits: existing.exactHits + (points === 2 ? 1 : 0),
+        outcomeHits: existing.outcomeHits + (points === 1 ? 1 : 0),
+        misses: existing.misses + (points === 0 ? 1 : 0),
+      };
+
+      statsByUserId.set(prediction.userId, next);
     }
 
     return leaderboardEntries.map((entry) => {
@@ -871,8 +880,6 @@ function App() {
           setAllPredictions([]);
           setUserPredictions([]);
           setIsLoading(true);
-          setOfficialStartMs(null);
-          setHasOfficialStartBegun(true);
           setError(null);
         }
       });
@@ -929,14 +936,73 @@ function App() {
       return;
     }
 
+    if (shouldUsePerUserPredictions) {
+      return;
+    }
+
     const unsubscribe = onAllPredictionsSnapshot({
       callback: (predictions) => {
         setAllPredictions(predictions);
       },
+      onError: () => {
+        setShouldUsePerUserPredictions(true);
+      },
     });
 
     return unsubscribe;
-  }, [user]);
+  }, [shouldUsePerUserPredictions, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    if (!shouldUsePerUserPredictions) {
+      return;
+    }
+
+    const userIds = leaderboardEntries
+      .map((entry) => entry.userId)
+      .filter(Boolean);
+
+    if (userIds.length === 0) {
+      window.setTimeout(() => {
+        setAllPredictions([]);
+      }, 0);
+      return;
+    }
+
+    const predictionsByUserId = new Map<string, MatchPrediction[]>();
+    const unsubscribers: Array<() => void> = [];
+
+    const emit = () => {
+      const merged = Array.from(predictionsByUserId.values()).flat();
+      merged.sort((predictionA, predictionB) => {
+        const dateA = predictionA.scheduledTimestamp ?? "";
+        const dateB = predictionB.scheduledTimestamp ?? "";
+        return dateA.localeCompare(dateB);
+      });
+      setAllPredictions(merged);
+    };
+
+    for (const userId of userIds) {
+      const unsubscribe = onUserPredictionsSnapshot({
+        userId,
+        callback: (predictions) => {
+          predictionsByUserId.set(userId, predictions);
+          emit();
+        },
+        onError: (snapshotError) => {
+          void snapshotError;
+        },
+      });
+      unsubscribers.push(unsubscribe);
+    }
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [leaderboardEntries, shouldUsePerUserPredictions, user]);
 
   useEffect(() => {
     if (!user) {
@@ -944,37 +1010,22 @@ function App() {
     }
 
     let isMounted = true;
+    let refreshIntervalId: number | null = null;
 
     async function loadData() {
       try {
-        const [worldCupResults, worldCupGroups, nextLiveMatches] =
-          await Promise.all([
-            getWorldCup2026ResultsByGroup(),
-            getWorldCup2026Groups(),
-            getWorldCup2026LiveMatches().catch(() => []),
-          ]);
+        const [worldCupResults, nextLiveMatches] = await Promise.all([
+          getWorldCup2026ResultsByGroup(),
+          getWorldCup2026LiveMatches().catch(() => []),
+        ]);
 
         if (!isMounted) {
           return;
         }
 
-        const officialStartMatch = worldCupGroups
-          .flatMap((group) => group.matches)
-          .find((match) => match.id === OFFICIAL_START_MATCH.id);
-
-        const nextOfficialStartMs = officialStartMatch
-          ? getMatchStartMs(officialStartMatch)
-          : null;
-
         setResultsByGroup(worldCupResults);
         setLiveMatches(nextLiveMatches);
         setLiveClockMs(Date.now());
-        setOfficialStartMs(nextOfficialStartMs);
-        setHasOfficialStartBegun(
-          officialStartMatch
-            ? hasFinalMatchStatus(officialStartMatch.status)
-            : false,
-        );
       } catch (loadError) {
         if (!isMounted) {
           return;
@@ -993,9 +1044,22 @@ function App() {
     }
 
     loadData();
+    refreshIntervalId = window.setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+
+      void loadData();
+    }, 120000);
 
     return () => {
       isMounted = false;
+      if (refreshIntervalId !== null) {
+        window.clearInterval(refreshIntervalId);
+      }
     };
   }, [user]);
 
@@ -1004,40 +1068,66 @@ function App() {
       return;
     }
 
-    const hasOfficialStartBegun =
-      officialStartMs === null ? true : Date.now() >= officialStartMs;
-
-    let lastPoints: number | null = null;
-
     const unsubscribe = onUserPredictionsSnapshot({
       userId: user.uid,
       callback: (predictions) => {
         setUserPredictions(predictions);
-
-        const points = hasOfficialStartBegun
-          ? calculateTotalPoints({ predictions, playedResults })
-          : 0;
-
-        if (lastPoints === points) {
-          return;
-        }
-
-        lastPoints = points;
-
-        void setUserLeaderboardPoints({ userId: user.uid, points }).catch(
-          (pointsError) => {
-            setError(
-              pointsError instanceof Error
-                ? pointsError.message
-                : "No se pudieron actualizar los puntos del usuario.",
-            );
-          },
-        );
       },
     });
 
     return unsubscribe;
-  }, [officialStartMs, playedResults, user]);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const matchStartMsById = new Map(
+      resultsByGroup
+        .flatMap((group) => group.matches)
+        .map((match) => [match.id, getMatchStartMs(match)] as const)
+        .filter((entry): entry is readonly [string, number] => {
+          const [, ms] = entry;
+          return typeof ms === "number" && Number.isFinite(ms);
+        }),
+    );
+    const eligiblePlayedResults =
+      hasOfficialStartBegun && typeof officialStartMs === "number"
+        ? playedResults.filter((result) => {
+            const startMs = matchStartMsById.get(result.matchId);
+            return typeof startMs === "number" && startMs >= officialStartMs;
+          })
+        : [];
+
+    const points = calculateTotalPoints({
+      predictions: userPredictions,
+      playedResults: eligiblePlayedResults,
+    });
+
+    if (leaderboardPointsFromFirebaseRef.current === points) {
+      return;
+    }
+
+    leaderboardPointsFromFirebaseRef.current = points;
+
+    void setUserLeaderboardPoints({ userId: user.uid, points }).catch(
+      (pointsError) => {
+        setError(
+          pointsError instanceof Error
+            ? pointsError.message
+            : "No se pudieron actualizar los puntos del usuario.",
+        );
+      },
+    );
+  }, [
+    hasOfficialStartBegun,
+    officialStartMs,
+    playedResults,
+    resultsByGroup,
+    user,
+    userPredictions,
+  ]);
 
   if (!isInstallCheckComplete) {
     return null;
@@ -1297,7 +1387,6 @@ function App() {
           <UsersTablePage
             users={leaderboardUsers}
             currentUserId={user.uid}
-            officialStartMs={officialStartMs}
             hasOfficialStartBegun={hasOfficialStartBegun}
           />
         ) : (
